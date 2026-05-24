@@ -1,0 +1,96 @@
+.breathing-circle-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
+.breathing-circle {
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #c8e8fa, #a8d0f0 40%, #b4a7e8 100%);
+  box-shadow: 0 0 0 20px rgba(164, 200, 240, 0.15), 0 0 0 40px rgba(180, 167, 232, 0.08);
+  transition: transform 0.1s;
+  will-change: transform;
+}
+
+/* Inhale: animate scale from current size up to full */
+.breathing-circle[data-phase="BREATHING_INHALE"] {
+  animation: inhale 2s ease-in-out forwards;
+}
+
+/* Exhale: animate scale from full down to small */
+.breathing-circle[data-phase="BREATHING_EXHALE"] {
+  animation: exhale 2s ease-in-out forwards;
+}
+
+/* Apnea: stay contracted, subtle soft pulse */
+.breathing-circle[data-phase="APNEA"] {
+  transform: scale(0.45);
+  animation: apnea-pulse 4s ease-in-out infinite;
+  background: radial-gradient(circle at 40% 35%, #c0d8f8, #a0c4e8 40%, #c8bdf0 100%);
+}
+
+/* Recovery: stay expanded, soft glow pulse */
+.breathing-circle[data-phase="RECOVERY_HOLD"] {
+  transform: scale(1);
+  animation: recovery-pulse 3s ease-in-out infinite;
+  background: radial-gradient(circle at 40% 35%, #d8f0fc, #b8dcf8 40%, #c4b8f0 100%);
+}
+
+@keyframes inhale {
+  from { transform: scale(0.45); }
+  to   { transform: scale(1); }
+}
+
+@keyframes exhale {
+  from { transform: scale(1); }
+  to   { transform: scale(0.45); }
+}
+
+@keyframes apnea-pulse {
+  0%, 100% { box-shadow: 0 0 0 20px rgba(164, 200, 240, 0.12), 0 0 0 40px rgba(180, 167, 232, 0.05); }
+  50%       { box-shadow: 0 0 0 24px rgba(164, 200, 240, 0.2), 0 0 0 48px rgba(180, 167, 232, 0.08); }
+}
+
+@keyframes recovery-pulse {
+  0%, 100% { box-shadow: 0 0 0 24px rgba(164, 200, 240, 0.2), 0 0 0 48px rgba(180, 167, 232, 0.1); }
+  50%       { box-shadow: 0 0 0 32px rgba(164, 200, 240, 0.28), 0 0 0 60px rgba(180, 167, 232, 0.14); }
+}
+
+.breathing-label {
+  font-size: 1.4rem;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: 0.01em;
+  min-height: 2rem;
+  text-align: center;
+}
+
+.breathing-sublabel {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-top: 4px;
+  text-align: center;
+}
+
+.breath-counter {
+  margin-top: 14px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent-dark);
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.timer-display {
+  margin-top: 14px;
+  font-size: 2.8rem;
+  font-weight: 300;
+  color: var(--text);
+  text-align: center;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
