@@ -11,6 +11,7 @@ export default function Setup({ onStart }: Props) {
   const [rounds, setRounds] = useState(3);
   const [breathsPerRound, setBreathsPerRound] = useState(30);
   const [apneaTimes, setApneaTimes] = useState<number[]>([60, 90, 120]);
+  const [loading, setLoading] = useState(false);
 
   function handleRoundsChange(n: number) {
     const next = Math.max(1, Math.min(10, n));
@@ -38,9 +39,10 @@ export default function Setup({ onStart }: Props) {
     return m > 0 ? `${m}min ${s > 0 ? s + 's' : ''}` : `${s}s`;
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    initAudio();
+    setLoading(true);
+    await initAudio();
     onStart({ rounds, breathsPerRound, apneaTimesSeconds: apneaTimes });
   }
 
@@ -117,8 +119,8 @@ export default function Setup({ onStart }: Props) {
           </div>
         </div>
 
-        <button type="submit" className="start-btn">
-          Começar
+        <button type="submit" className="start-btn" disabled={loading}>
+          {loading ? 'Carregando...' : 'Começar'}
         </button>
       </form>
     </div>

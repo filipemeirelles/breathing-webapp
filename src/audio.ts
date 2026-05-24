@@ -4,7 +4,10 @@ let masterGain: GainNode | null = null;
 let bgNoise: AudioBufferSourceNode | null = null;
 let bgDrone: OscillatorNode | null = null;
 let bgDroneLfo: OscillatorNode | null = null;
-let breathOsc: OscillatorNode | null = null;
+let breathSource: AudioBufferSourceNode | null = null;
+
+let inhaleBuffer: AudioBuffer | null = null;
+let exhaleBuffer: AudioBuffer | null = null;
 
 function getCtx(): AudioContext {
   if (!ctx) {
@@ -21,8 +24,21 @@ function getMaster(): GainNode {
   return masterGain!;
 }
 
-export function initAudio() {
-  getCtx().resume();
+async function loadBuffer(url: string): Promise<AudioBuffer> {
+  const response = await fetch(url);
+  const arrayBuffer = await response.arrayBuffer();
+  return getCtx().decodeAudioData(arrayBuffer);
+}
+
+export async function initAudio() {
+  const c = getCtx();
+  await c.resume();
+
+  const base = import.meta.env.BASE_URL;
+  [inhaleBuffer, exhaleBuffer] = await Promise.all([
+    loadBuffer(`${base}inhale.ogg`),
+    loadBuffer(`${base}exhale.ogg`),
+  ]);
 }
 
 export function setMuted(muted: boolean) {
@@ -85,37 +101,29 @@ export function stopBackground() {
   bgDroneLfo = null;
 }
 
-// Plays a tone that rises on inhale (A3→E4) and falls on exhale (E4→A3)
 export function playBreathTone(type: 'inhale' | 'exhale') {
   const c = getCtx();
-  const duration = 1.85;
+  const buffer = type === 'inhale' ? inhaleBuffer : exhaleBuffer;
 
-  try { breathOsc?.stop(); } catch { /* ignore */ }
+  try { breathSource?.stop(); } catch { /* ignore */ }
+  breathSource = null;
 
-  const fromHz = type === 'inhale' ? 220 : 330;
-  const toHz   = type === 'inhale' ? 330 : 220;
+  if (!buffer) return;
 
-  breathOsc = c.createOscillator();
+  const source = c.createBufferSource();
+  source.buffer = buffer;
+
   const gain = c.createGain();
+  gain.gain.value = 0.9;
 
-  breathOsc.type = 'sine';
-  breathOsc.frequency.setValueAtTime(fromHz, c.currentTime);
-  breathOsc.frequency.linearRampToValueAtTime(toHz, c.currentTime + duration);
-
-  // Soft envelope: quick fade in, sustain, fade out
-  gain.gain.setValueAtTime(0, c.currentTime);
-  gain.gain.linearRampToValueAtTime(0.09, c.currentTime + 0.12);
-  gain.gain.setValueAtTime(0.09, c.currentTime + duration - 0.25);
-  gain.gain.linearRampToValueAtTime(0, c.currentTime + duration);
-
-  breathOsc.connect(gain);
+  source.connect(gain);
   gain.connect(getMaster());
+  source.start(c.currentTime);
 
-  breathOsc.start(c.currentTime);
-  breathOsc.stop(c.currentTime + duration);
+  breathSource = source;
 }
 
 export function stopBreathTone() {
-  try { breathOsc?.stop(); } catch { /* ignore */ }
-  breathOsc = null;
+  try { breathSource?.stop(); } catch { /* ignore */ }
+  breathSource = null;
 }
