@@ -86,6 +86,7 @@
   overflow: hidden;
   border: 1.5px solid var(--border);
   width: fit-content;
+  align-self: center;
 }
 
 .stepper-btn {

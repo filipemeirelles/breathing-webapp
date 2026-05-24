@@ -17,6 +17,12 @@
   margin-bottom: 60px;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .phase-badge {
   font-size: 0.8rem;
   font-weight: 600;
@@ -27,6 +33,25 @@
   padding: 8px 16px;
   border-radius: 40px;
   box-shadow: var(--shadow);
+}
+
+.mute-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: color 0.2s, background 0.2s;
+  flex-shrink: 0;
+}
+
+.mute-btn:hover {
+  color: var(--accent-dark);
+  background: rgba(126, 184, 247, 0.1);
 }
 
 .exercise-main {

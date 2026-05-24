@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ExerciseConfig } from '../types';
+import { initAudio } from '../audio';
 import './Setup.css';
 
 interface Props {
@@ -39,6 +40,7 @@ export default function Setup({ onStart }: Props) {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    initAudio();
     onStart({ rounds, breathsPerRound, apneaTimesSeconds: apneaTimes });
   }
 
