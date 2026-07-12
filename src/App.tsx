@@ -3,6 +3,7 @@ import type { ExerciseConfig, SessionResult } from './types';
 import Setup from './pages/Setup';
 import Exercise from './pages/Exercise';
 import Complete from './pages/Complete';
+import { appendSession } from './storage';
 
 type Screen = 'setup' | 'exercise' | 'complete';
 
@@ -17,6 +18,7 @@ export default function App() {
   }
 
   function handleComplete(sessionResult: SessionResult) {
+    appendSession(sessionResult);
     setResult(sessionResult);
     setScreen('complete');
   }

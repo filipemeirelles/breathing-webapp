@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ExerciseConfig, RetentionMode } from '../types';
-import { DEFAULT_CONFIG } from '../types';
 import { initAudio } from '../audio';
+import { loadConfig, loadHistory, saveConfig } from '../storage';
 import './Setup.css';
 
 interface Props {
   onStart: (config: ExerciseConfig) => void;
-  initialConfig?: ExerciseConfig;
 }
+
+const HISTORY_DISPLAY_LIMIT = 5;
 
 function formatSecondsShort(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -19,12 +20,17 @@ function formatPace(ms: number) {
   return `${(ms / 1000).toLocaleString('pt-BR')}s`;
 }
 
-export default function Setup({ onStart, initialConfig }: Props) {
-  const base = initialConfig ?? DEFAULT_CONFIG;
+export default function Setup({ onStart }: Props) {
+  const base = useMemo(() => loadConfig(), []);
+  const history = useMemo(() => loadHistory(), []);
   const [rounds, setRounds] = useState(base.rounds);
   const [breathsPerRound, setBreathsPerRound] = useState(base.breathsPerRound);
   const [breathPaceMs, setBreathPaceMs] = useState(base.breathPaceMs);
-  const [apneaTimes, setApneaTimes] = useState<number[]>(base.apneaTimesSeconds.slice(0, base.rounds));
+  const [apneaTimes, setApneaTimes] = useState<number[]>(() => {
+    const arr = base.apneaTimesSeconds.slice(0, base.rounds);
+    while (arr.length < base.rounds) arr.push(arr[arr.length - 1] ?? 60);
+    return arr;
+  });
   const [retentionMode, setRetentionMode] = useState<RetentionMode>(base.retentionMode);
   const [recoveryHoldSeconds, setRecoveryHoldSeconds] = useState(base.recoveryHoldSeconds);
   const [meditationSeconds, setMeditationSeconds] = useState(base.meditationSeconds);
@@ -51,8 +57,7 @@ export default function Setup({ onStart, initialConfig }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    await initAudio();
-    onStart({
+    const config: ExerciseConfig = {
       rounds,
       breathsPerRound,
       breathPaceMs,
@@ -61,7 +66,10 @@ export default function Setup({ onStart, initialConfig }: Props) {
       recoveryHoldSeconds,
       meditationSeconds,
       prepSeconds: base.prepSeconds,
-    });
+    };
+    saveConfig(config);
+    await initAudio();
+    onStart(config);
   }
 
   return (
@@ -229,6 +237,28 @@ export default function Setup({ onStart, initialConfig }: Props) {
           {loading ? 'Carregando...' : 'Começar'}
         </button>
       </form>
+
+      {history.length > 0 && (
+        <section className="history-section">
+          <h2 className="history-title">Sessões recentes</h2>
+          {history.slice(0, HISTORY_DISPLAY_LIMIT).map((s, i) => (
+            <div key={i} className="history-row">
+              <span className="history-date">{formatHistoryDate(s.date)}</span>
+              <span className="history-detail">
+                {s.rounds} {s.rounds === 1 ? 'round' : 'rounds'}
+                {s.retentionSeconds.length > 0 &&
+                  ` · melhor retenção ${formatSecondsShort(Math.max(...s.retentionSeconds))}`}
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
     </div>
   );
+}
+
+function formatHistoryDate(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
