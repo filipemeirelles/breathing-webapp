@@ -68,7 +68,12 @@ export default function Setup({ onStart }: Props) {
       prepSeconds: base.prepSeconds,
     };
     saveConfig(config);
-    await initAudio();
+    try {
+      await initAudio();
+    } catch {
+      // Sem os sons de respiração (offline, fetch bloqueado) o exercício
+      // ainda funciona — scheduleBreath ignora buffers ausentes.
+    }
     onStart(config);
   }
 
