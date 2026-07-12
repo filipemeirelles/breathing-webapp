@@ -239,6 +239,17 @@ function cancelScheduled() {
   }
 }
 
+/**
+ * Observa mudanças de estado do AudioContext (ex.: suspensão pelo SO ao
+ * bloquear a tela). Retorna a função de unsubscribe.
+ */
+export function onAudioStateChange(cb: (state: AudioContextState) => void): () => void {
+  const c = getCtx();
+  const handler = () => cb(c.state);
+  c.addEventListener('statechange', handler);
+  return () => c.removeEventListener('statechange', handler);
+}
+
 export function getAudioSink(): AudioSink {
   const c = getCtx();
   return {
