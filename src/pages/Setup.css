@@ -144,6 +144,39 @@
   margin-top: -6px;
 }
 
+.form-hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin-top: -4px;
+}
+
+.mode-toggle {
+  display: flex;
+  gap: 0;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  overflow: hidden;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 10px 0;
+  background: none;
+  border: none;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.mode-btn.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: white;
+}
+
 .apnea-inputs {
   display: flex;
   flex-direction: column;

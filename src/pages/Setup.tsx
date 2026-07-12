@@ -1,16 +1,33 @@
 import { useState } from 'react';
-import type { ExerciseConfig } from '../types';
+import type { ExerciseConfig, RetentionMode } from '../types';
+import { DEFAULT_CONFIG } from '../types';
 import { initAudio } from '../audio';
 import './Setup.css';
 
 interface Props {
   onStart: (config: ExerciseConfig) => void;
+  initialConfig?: ExerciseConfig;
 }
 
-export default function Setup({ onStart }: Props) {
-  const [rounds, setRounds] = useState(3);
-  const [breathsPerRound, setBreathsPerRound] = useState(30);
-  const [apneaTimes, setApneaTimes] = useState<number[]>([60, 90, 120]);
+function formatSecondsShort(seconds: number) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m > 0 ? `${m}min ${s > 0 ? s + 's' : ''}` : `${s}s`;
+}
+
+function formatPace(ms: number) {
+  return `${(ms / 1000).toLocaleString('pt-BR')}s`;
+}
+
+export default function Setup({ onStart, initialConfig }: Props) {
+  const base = initialConfig ?? DEFAULT_CONFIG;
+  const [rounds, setRounds] = useState(base.rounds);
+  const [breathsPerRound, setBreathsPerRound] = useState(base.breathsPerRound);
+  const [breathPaceMs, setBreathPaceMs] = useState(base.breathPaceMs);
+  const [apneaTimes, setApneaTimes] = useState<number[]>(base.apneaTimesSeconds.slice(0, base.rounds));
+  const [retentionMode, setRetentionMode] = useState<RetentionMode>(base.retentionMode);
+  const [recoveryHoldSeconds, setRecoveryHoldSeconds] = useState(base.recoveryHoldSeconds);
+  const [meditationSeconds, setMeditationSeconds] = useState(base.meditationSeconds);
   const [loading, setLoading] = useState(false);
 
   function handleRoundsChange(n: number) {
@@ -23,27 +40,28 @@ export default function Setup({ onStart }: Props) {
     });
   }
 
-  function handleApneaChange(index: number, value: string) {
-    const num = parseInt(value, 10);
-    if (isNaN(num) || num < 0) return;
+  function handleApneaChange(index: number, value: number) {
     setApneaTimes((prev) => {
       const updated = [...prev];
-      updated[index] = num;
+      updated[index] = Math.max(10, Math.min(600, value));
       return updated;
     });
-  }
-
-  function formatApneaDisplay(seconds: number) {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return m > 0 ? `${m}min ${s > 0 ? s + 's' : ''}` : `${s}s`;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     await initAudio();
-    onStart({ rounds, breathsPerRound, apneaTimesSeconds: apneaTimes });
+    onStart({
+      rounds,
+      breathsPerRound,
+      breathPaceMs,
+      apneaTimesSeconds: apneaTimes,
+      retentionMode,
+      recoveryHoldSeconds,
+      meditationSeconds,
+      prepSeconds: base.prepSeconds,
+    });
   }
 
   return (
@@ -96,27 +114,115 @@ export default function Setup({ onStart }: Props) {
         </div>
 
         <div className="form-card">
-          <label className="form-label">Tempo de apnéia por round</label>
-          <div className="apnea-inputs">
-            {apneaTimes.map((t, i) => (
-              <div key={i} className="apnea-row">
-                <span className="apnea-round-label">Round {i + 1}</span>
-                <div className="apnea-control">
-                  <button
-                    type="button"
-                    className="stepper-btn small"
-                    onClick={() => handleApneaChange(i, String(Math.max(10, t - 10)))}
-                  >−</button>
-                  <span className="apnea-value">{formatApneaDisplay(t)}</span>
-                  <button
-                    type="button"
-                    className="stepper-btn small"
-                    onClick={() => handleApneaChange(i, String(Math.min(600, t + 10)))}
-                  >+</button>
-                </div>
-              </div>
-            ))}
+          <label className="form-label">
+            Ritmo da respiração
+            <span className="form-value-badge">{formatPace(breathPaceMs)}</span>
+          </label>
+          <input
+            type="range"
+            min={1500}
+            max={4000}
+            step={250}
+            value={breathPaceMs}
+            onChange={(e) => setBreathPaceMs(Number(e.target.value))}
+            className="slider"
+          />
+          <div className="slider-range-labels">
+            <span>Rápido</span>
+            <span>Lento</span>
           </div>
+          <p className="form-hint">Duração de cada inspiração e expiração</p>
+        </div>
+
+        <div className="form-card">
+          <label className="form-label">Retenção (apnéia)</label>
+          <div className="mode-toggle">
+            <button
+              type="button"
+              className={`mode-btn${retentionMode === 'countdown' ? ' active' : ''}`}
+              onClick={() => setRetentionMode('countdown')}
+            >
+              Cronômetro
+            </button>
+            <button
+              type="button"
+              className={`mode-btn${retentionMode === 'countup' ? ' active' : ''}`}
+              onClick={() => setRetentionMode('countup')}
+            >
+              Livre
+            </button>
+          </div>
+          {retentionMode === 'countdown' ? (
+            <div className="apnea-inputs">
+              {apneaTimes.map((t, i) => (
+                <div key={i} className="apnea-row">
+                  <span className="apnea-round-label">Round {i + 1}</span>
+                  <div className="apnea-control">
+                    <button
+                      type="button"
+                      className="stepper-btn small"
+                      onClick={() => handleApneaChange(i, t - 10)}
+                    >−</button>
+                    <span className="apnea-value">{formatSecondsShort(t)}</span>
+                    <button
+                      type="button"
+                      className="stepper-btn small"
+                      onClick={() => handleApneaChange(i, t + 10)}
+                    >+</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="form-hint">
+              Segure até sentir vontade de respirar e toque em “Respirar”. Seu tempo é registrado a cada round.
+            </p>
+          )}
+        </div>
+
+        <div className="form-card">
+          <label className="form-label">
+            Tempo de recuperação
+            <span className="form-value-badge">{recoveryHoldSeconds}s</span>
+          </label>
+          <div className="stepper">
+            <button
+              type="button"
+              className="stepper-btn"
+              onClick={() => setRecoveryHoldSeconds(Math.max(5, recoveryHoldSeconds - 5))}
+              disabled={recoveryHoldSeconds <= 5}
+            >−</button>
+            <span className="stepper-value">{recoveryHoldSeconds}s</span>
+            <button
+              type="button"
+              className="stepper-btn"
+              onClick={() => setRecoveryHoldSeconds(Math.min(60, recoveryHoldSeconds + 5))}
+              disabled={recoveryHoldSeconds >= 60}
+            >+</button>
+          </div>
+          <p className="form-hint">Inspire fundo e segure após cada apnéia</p>
+        </div>
+
+        <div className="form-card">
+          <label className="form-label">Meditação final</label>
+          <div className="stepper">
+            <button
+              type="button"
+              className="stepper-btn"
+              onClick={() => setMeditationSeconds(Math.max(0, meditationSeconds - 60))}
+              disabled={meditationSeconds <= 0}
+            >−</button>
+            <span className="stepper-value">
+              {meditationSeconds === 0 ? 'Desativada' : `${meditationSeconds / 60}min`}
+            </span>
+            <button
+              type="button"
+              className="stepper-btn"
+              onClick={() => setMeditationSeconds(Math.min(1200, meditationSeconds + 60))}
+              disabled={meditationSeconds >= 1200}
+            >+</button>
+          </div>
+          <p className="form-hint">Tempo de meditação após o último round</p>
         </div>
 
         <button type="submit" className="start-btn" disabled={loading}>

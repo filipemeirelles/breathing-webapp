@@ -15,14 +15,32 @@
   will-change: transform;
 }
 
-/* Inhale: animate scale from current size up to full */
+/* Inhale: animate scale from current size up to full.
+   Duration comes from --breath-duration (set inline from ExerciseConfig) so
+   CSS never drifts from the audio-clock timeline. */
 .breathing-circle[data-phase="BREATHING_INHALE"] {
-  animation: inhale 2s ease-in-out forwards;
+  animation: inhale var(--breath-duration, 2s) ease-in-out forwards;
 }
 
 /* Exhale: animate scale from full down to small */
 .breathing-circle[data-phase="BREATHING_EXHALE"] {
-  animation: exhale 2s ease-in-out forwards;
+  animation: exhale var(--breath-duration, 2s) ease-in-out forwards;
+}
+
+/* Prepare: contracted, gentle pulse while the countdown runs */
+.breathing-circle[data-phase="PREPARE"] {
+  transform: scale(0.45);
+  animation: apnea-pulse 4s ease-in-out infinite;
+}
+
+/* Meditation: slow, ample breathing-like pulse */
+.breathing-circle[data-phase="MEDITATION"] {
+  animation: meditation-pulse 8s ease-in-out infinite;
+  background: radial-gradient(circle at 40% 35%, #cde4fa, #aacdf0 40%, #beb0ec 100%);
+}
+
+.breathing-circle.paused {
+  animation-play-state: paused;
 }
 
 /* Apnea: stay contracted, subtle soft pulse */
@@ -52,6 +70,11 @@
 @keyframes apnea-pulse {
   0%, 100% { box-shadow: 0 0 0 20px rgba(164, 200, 240, 0.12), 0 0 0 40px rgba(180, 167, 232, 0.05); }
   50%       { box-shadow: 0 0 0 24px rgba(164, 200, 240, 0.2), 0 0 0 48px rgba(180, 167, 232, 0.08); }
+}
+
+@keyframes meditation-pulse {
+  0%, 100% { transform: scale(0.6); }
+  50%      { transform: scale(0.85); }
 }
 
 @keyframes recovery-pulse {

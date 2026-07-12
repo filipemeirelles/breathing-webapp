@@ -1,63 +1,27 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
-import type { ExerciseConfig, ExerciseState } from '../types';
+import type { ExerciseConfig, ExerciseState, Phase, SessionResult } from '../types';
 import BreathingCircle from '../components/BreathingCircle';
 import RoundProgress from '../components/RoundProgress';
-import { startBackground, stopBackground, playBreathTone, stopBreathTone, setMuted } from '../audio';
+import { BreathEngine, type EngineEvent } from '../engine/breathEngine';
+import { getAudioSink, startBackground, stopBackground, setMuted } from '../audio';
 import './Exercise.css';
 
-const INHALE_MS = 2000;
-const EXHALE_MS = 2000;
-const RECOVERY_SECONDS = 10;
-
 type Action =
-  | { type: 'NEXT_PHASE' }
-  | { type: 'TICK' };
-
-function nextPhase(state: ExerciseState): ExerciseState {
-  const { config, currentRound, currentBreath, phase } = state;
-
-  if (phase === 'BREATHING_INHALE') {
-    return { ...state, phase: 'BREATHING_EXHALE' };
-  }
-
-  if (phase === 'BREATHING_EXHALE') {
-    const nextBreath = currentBreath + 1;
-    if (nextBreath <= config.breathsPerRound) {
-      return { ...state, phase: 'BREATHING_INHALE', currentBreath: nextBreath };
-    }
-    return {
-      ...state,
-      phase: 'APNEA',
-      secondsLeft: config.apneaTimesSeconds[currentRound],
-    };
-  }
-
-  if (phase === 'APNEA') {
-    return { ...state, phase: 'RECOVERY_HOLD', secondsLeft: RECOVERY_SECONDS };
-  }
-
-  if (phase === 'RECOVERY_HOLD') {
-    const nextRound = currentRound + 1;
-    if (nextRound < config.rounds) {
-      return {
-        ...state,
-        currentRound: nextRound,
-        currentBreath: 1,
-        phase: 'BREATHING_INHALE',
-        secondsLeft: 0,
-      };
-    }
-    return { ...state, phase: 'ALL_COMPLETE' };
-  }
-
-  return state;
-}
+  | { type: 'SEGMENT'; phase: Phase; round: number; breath: number; seconds: number }
+  | { type: 'TICK'; seconds: number };
 
 function reducer(state: ExerciseState, action: Action): ExerciseState {
-  if (action.type === 'NEXT_PHASE') return nextPhase(state);
+  if (action.type === 'SEGMENT') {
+    return {
+      ...state,
+      phase: action.phase,
+      currentRound: action.round,
+      currentBreath: action.breath,
+      seconds: action.seconds,
+    };
+  }
   if (action.type === 'TICK') {
-    if (state.secondsLeft <= 1) return nextPhase(state);
-    return { ...state, secondsLeft: state.secondsLeft - 1 };
+    return { ...state, seconds: action.seconds };
   }
   return state;
 }
@@ -66,78 +30,67 @@ function makeInitialState(config: ExerciseConfig): ExerciseState {
   return {
     config,
     currentRound: 0,
-    currentBreath: 1,
-    phase: 'BREATHING_INHALE',
-    secondsLeft: 0,
+    currentBreath: 0,
+    phase: config.prepSeconds > 0 ? 'PREPARE' : 'BREATHING_INHALE',
+    seconds: config.prepSeconds,
+    paused: false,
   };
 }
 
+const PHASE_BADGES: Record<Phase, string> = {
+  PREPARE: 'Prepare-se',
+  BREATHING_INHALE: 'Respirando',
+  BREATHING_EXHALE: 'Respirando',
+  APNEA: 'Apnéia',
+  RECOVERY_HOLD: 'Recuperação',
+  MEDITATION: 'Meditação',
+  ALL_COMPLETE: '',
+};
+
 interface Props {
   config: ExerciseConfig;
-  onComplete: (rounds: number, totalSeconds: number) => void;
+  onComplete: (result: SessionResult) => void;
 }
 
 export default function Exercise({ config, onComplete }: Props) {
   const [state, dispatch] = useReducer(reducer, config, makeInitialState);
   const [muted, setMutedState] = useState(false);
-  const startTimeRef = useRef(Date.now());
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const engineRef = useRef<BreathEngine | null>(null);
+  const onCompleteRef = useRef(onComplete);
 
-  const { phase, currentRound, currentBreath, secondsLeft } = state;
-
-  // Start / stop background audio
   useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  const { phase, currentRound, currentBreath, seconds } = state;
+
+  useEffect(() => {
+    const engine = new BreathEngine(getAudioSink(), config);
+    engineRef.current = engine;
+    engine.onEvent((e: EngineEvent) => {
+      if (e.type === 'complete') {
+        onCompleteRef.current({
+          rounds: e.roundsCompleted,
+          totalSeconds: e.elapsedSeconds,
+          retentionSeconds: e.retentionSeconds,
+          meditationSeconds: e.meditationSeconds,
+          date: new Date().toISOString(),
+        });
+      } else if (e.type === 'segment') {
+        dispatch({ type: 'SEGMENT', phase: e.phase, round: e.round, breath: e.breath, seconds: e.seconds });
+      } else {
+        dispatch({ type: 'TICK', seconds: e.seconds });
+      }
+    });
     startBackground();
+    engine.start();
+
     return () => {
+      engine.stop();
       stopBackground();
-      stopBreathTone();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Play breath tone on each phase change
-  useEffect(() => {
-    if (phase === 'BREATHING_INHALE') {
-      playBreathTone('inhale');
-    } else if (phase === 'BREATHING_EXHALE') {
-      playBreathTone('exhale');
-    } else {
-      stopBreathTone();
-    }
-  }, [phase, currentBreath]);
-
-  // Phase transition timers
-  useEffect(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-
-    if (phase === 'ALL_COMPLETE') {
-      const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
-      onComplete(config.rounds, elapsed);
-      return;
-    }
-
-    if (phase === 'BREATHING_INHALE') {
-      timerRef.current = setTimeout(() => dispatch({ type: 'NEXT_PHASE' }), INHALE_MS);
-    } else if (phase === 'BREATHING_EXHALE') {
-      timerRef.current = setTimeout(() => dispatch({ type: 'NEXT_PHASE' }), EXHALE_MS);
-    }
-
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [phase, currentBreath, currentRound]);
-
-  // Countdown tick for apnea and recovery
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-
-    if (phase === 'APNEA' || phase === 'RECOVERY_HOLD') {
-      interval = setInterval(() => dispatch({ type: 'TICK' }), 1000);
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [phase]);
 
   function toggleMute() {
     const next = !muted;
@@ -145,19 +98,14 @@ export default function Exercise({ config, onComplete }: Props) {
     setMuted(next);
   }
 
-  const phaseLabel =
-    phase === 'APNEA'
-      ? 'Apnéia'
-      : phase === 'RECOVERY_HOLD'
-      ? 'Recuperação'
-      : 'Respirando';
+  const showBreatheButton = phase === 'APNEA' && config.retentionMode === 'countup';
 
   return (
     <div className="exercise-page">
       <header className="exercise-header">
         <RoundProgress currentRound={currentRound} totalRounds={config.rounds} />
         <div className="header-right">
-          <span className="phase-badge">{phaseLabel}</span>
+          <span className="phase-badge">{PHASE_BADGES[phase]}</span>
           <button className="mute-btn" onClick={toggleMute} title={muted ? 'Ativar som' : 'Silenciar'}>
             {muted ? <IconMuted /> : <IconSound />}
           </button>
@@ -169,8 +117,14 @@ export default function Exercise({ config, onComplete }: Props) {
           phase={phase}
           breathCount={currentBreath}
           totalBreaths={config.breathsPerRound}
-          secondsLeft={secondsLeft}
+          seconds={seconds}
+          breathPaceMs={config.breathPaceMs}
         />
+        {showBreatheButton && (
+          <button className="breathe-btn" onClick={() => engineRef.current?.endRetentionNow()}>
+            Respirar
+          </button>
+        )}
       </main>
     </div>
   );

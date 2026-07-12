@@ -57,6 +57,29 @@
 .exercise-main {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 40px;
+}
+
+.breathe-btn {
+  padding: 16px 48px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: white;
+  border-radius: 50px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 20px rgba(126, 184, 247, 0.4);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.breathe-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 28px rgba(126, 184, 247, 0.5);
+}
+
+.breathe-btn:active {
+  transform: translateY(0);
 }
