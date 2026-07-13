@@ -13,13 +13,73 @@ export interface Segment {
   /** Respiração 1-based durante BREATHING_*; 0 nas demais fases. */
   breath: number;
   start: number;
-  /** Infinity = retenção livre (count-up), resolvida com resolveRetention. */
+  /** Infinity = fase livre (count-up), resolvida com resolveRetention. */
   end: number;
   countUp: boolean;
 }
 
+interface Built {
+  segs: Segment[];
+  t: number;
+}
+
 function seg(phase: Phase, round: number, breath: number, start: number, end: number, countUp = false): Segment {
   return { phase, round, breath, start, end, countUp };
+}
+
+/** As respirações ativas (inspire/expire) de um round, a partir de `t`. */
+function buildRoundBreathing(config: ExerciseConfig, round: number, t: number): Built {
+  const segs: Segment[] = [];
+  const inhaleSec = config.breathPaceMs / 1000;
+  const exhaleSec = config.breathPaceMs / 1000;
+  for (let b = 1; b <= config.breathsPerRound; b++) {
+    const inStart = t + (b - 1) * (inhaleSec + exhaleSec);
+    segs.push(seg('BREATHING_INHALE', round, b, inStart, inStart + inhaleSec));
+    segs.push(seg('BREATHING_EXHALE', round, b, inStart + inhaleSec, inStart + inhaleSec + exhaleSec));
+  }
+  return { segs, t: t + config.breathsPerRound * (inhaleSec + exhaleSec) };
+}
+
+/** A apnéia de um round: contagem regressiva ou livre (count-up, sem fim). */
+function buildRoundApnea(config: ExerciseConfig, round: number, t: number): Built & { open: boolean } {
+  if (config.retentionMode === 'countup') {
+    return { segs: [seg('APNEA', round, 0, t, Infinity, true)], t: Infinity, open: true };
+  }
+  const apneaSec = config.apneaTimesSeconds[round] ?? config.apneaTimesSeconds[config.apneaTimesSeconds.length - 1] ?? 60;
+  return { segs: [seg('APNEA', round, 0, t, t + apneaSec)], t: t + apneaSec, open: false };
+}
+
+/** A recuperação: inspiração funda segurada por `recoveryHoldSeconds`. */
+function buildRoundRecovery(config: ExerciseConfig, round: number, t: number): Built {
+  const end = t + config.recoveryHoldSeconds;
+  return { segs: [seg('RECOVERY_HOLD', round, 0, t, end)], t: end };
+}
+
+/**
+ * Solta o ar retido na recuperação antes de iniciar o próximo round —
+ * sem isso a timeline pulava direto da retenção pra próxima inspiração
+ * com os pulmões ainda cheios.
+ */
+function buildRoundRelease(config: ExerciseConfig, round: number, t: number): Built {
+  const releaseSec = config.breathPaceMs / 1000;
+  const end = t + releaseSec;
+  return { segs: [seg('RECOVERY_RELEASE', round, 0, t, end)], t: end };
+}
+
+/** Recuperação + soltar o ar + o que vem depois (próximo round ou fim). */
+function buildAfterApnea(config: ExerciseConfig, round: number, t: number): Segment[] {
+  const out: Segment[] = [];
+  const recovery = buildRoundRecovery(config, round, t);
+  out.push(...recovery.segs);
+  const release = buildRoundRelease(config, round, recovery.t);
+  out.push(...release.segs);
+
+  if (round + 1 < config.rounds) {
+    out.push(...buildFromRound(config, round + 1, release.t));
+  } else {
+    out.push(...buildEnding(config, release.t));
+  }
+  return out;
 }
 
 /**
@@ -28,30 +88,19 @@ function seg(phase: Phase, round: number, breath: number, start: number, end: nu
  */
 function buildFromRound(config: ExerciseConfig, round: number, t: number): Segment[] {
   const out: Segment[] = [];
-  const inhaleSec = config.breathPaceMs / 1000;
-  const exhaleSec = config.breathPaceMs / 1000;
-
   for (let r = round; r < config.rounds; r++) {
-    const roundStart = t;
-    for (let b = 1; b <= config.breathsPerRound; b++) {
-      const inStart = roundStart + (b - 1) * (inhaleSec + exhaleSec);
-      out.push(seg('BREATHING_INHALE', r, b, inStart, inStart + inhaleSec));
-      out.push(seg('BREATHING_EXHALE', r, b, inStart + inhaleSec, inStart + inhaleSec + exhaleSec));
-    }
-    t = roundStart + config.breathsPerRound * (inhaleSec + exhaleSec);
+    const breathing = buildRoundBreathing(config, r, t);
+    out.push(...breathing.segs);
+    t = breathing.t;
 
-    if (config.retentionMode === 'countup') {
-      out.push(seg('APNEA', r, 0, t, Infinity, true));
-      return out;
-    }
-    const apneaSec = config.apneaTimesSeconds[r] ?? config.apneaTimesSeconds[config.apneaTimesSeconds.length - 1] ?? 60;
-    out.push(seg('APNEA', r, 0, t, t + apneaSec));
-    t += apneaSec;
+    const apnea = buildRoundApnea(config, r, t);
+    out.push(...apnea.segs);
+    if (apnea.open) return out;
+    t = apnea.t;
 
-    out.push(seg('RECOVERY_HOLD', r, 0, t, t + config.recoveryHoldSeconds));
-    t += config.recoveryHoldSeconds;
+    out.push(...buildAfterApnea(config, r, t));
+    return out;
   }
-
   out.push(...buildEnding(config, t));
   return out;
 }
@@ -93,17 +142,60 @@ export function resolveRetention(config: ExerciseConfig, segments: Segment[], en
     return segments;
   }
   const resolved: Segment = { ...last, end: endTime };
-  const out = [...segments.slice(0, -1), resolved];
+  return [...segments.slice(0, -1), resolved, ...buildAfterApnea(config, last.round, endTime)];
+}
 
-  const t = endTime + config.recoveryHoldSeconds;
-  out.push(seg('RECOVERY_HOLD', last.round, 0, endTime, t));
+/** Reinicia a respiração do `round` do zero, a partir de `t`. */
+export function restartBreathing(config: ExerciseConfig, round: number, t: number): Segment[] {
+  return buildFromRound(config, round, t);
+}
 
-  if (last.round + 1 < config.rounds) {
-    out.push(...buildFromRound(config, last.round + 1, t));
+/** Reinicia a apnéia do `round` do zero (regressiva com o tempo cheio, ou livre voltando a 0). */
+export function restartApnea(config: ExerciseConfig, round: number, t: number): Segment[] {
+  const out: Segment[] = [];
+  const apnea = buildRoundApnea(config, round, t);
+  out.push(...apnea.segs);
+  if (apnea.open) return out;
+  out.push(...buildAfterApnea(config, round, apnea.t));
+  return out;
+}
+
+/** Reinicia a recuperação do `round` do zero. */
+export function restartRecovery(config: ExerciseConfig, round: number, t: number): Segment[] {
+  const out: Segment[] = [];
+  const recovery = buildRoundRecovery(config, round, t);
+  out.push(...recovery.segs);
+  const release = buildRoundRelease(config, round, recovery.t);
+  out.push(...release.segs);
+  if (round + 1 < config.rounds) {
+    out.push(...buildFromRound(config, round + 1, release.t));
   } else {
-    out.push(...buildEnding(config, t));
+    out.push(...buildEnding(config, release.t));
   }
   return out;
+}
+
+/** Reinicia o "soltar o ar" do `round` do zero. */
+export function restartRelease(config: ExerciseConfig, round: number, t: number): Segment[] {
+  const out: Segment[] = [];
+  const release = buildRoundRelease(config, round, t);
+  out.push(...release.segs);
+  if (round + 1 < config.rounds) {
+    out.push(...buildFromRound(config, round + 1, release.t));
+  } else {
+    out.push(...buildEnding(config, release.t));
+  }
+  return out;
+}
+
+/** Reinicia a meditação do zero (fixa: volta ao tempo cheio; sem limite: volta a 0). */
+export function restartMeditation(config: ExerciseConfig, t: number): Segment[] {
+  return buildEnding(config, t);
+}
+
+/** Reinicia a sessão inteira a partir do "Prepare-se". */
+export function restartPrepare(config: ExerciseConfig, t: number): Segment[] {
+  return buildTimeline(config, t);
 }
 
 /** Índice do segmento ativo no instante `t` (o último com start <= t < end). */

@@ -30,7 +30,8 @@ const MIN_RATE = 0.6;
 const MAX_RATE = 1.4;
 
 const BINAURAL_CARRIER_HZ = 200;
-const BINAURAL_GAIN = 0.05;
+/** Baixo de propósito: é um tom fixo e contínuo, fica marcante mesmo suave. */
+const BINAURAL_GAIN = 0.02;
 /** Batida por fase: alpha na respiração ativa, theta na retenção/meditação. */
 const BINAURAL_BEAT_HZ: Record<AmbienceMode, number> = {
   breathing: 10,
@@ -41,19 +42,19 @@ const BINAURAL_BEAT_HZ: Record<AmbienceMode, number> = {
 /** Ganhos das duas camadas de cada paisagem sonora, por fase. */
 const SOUNDSCAPE_LEVELS: Record<Exclude<Soundscape, 'none'>, Record<AmbienceMode, { a: number; b: number }>> = {
   breeze: {
-    breathing: { a: 0.035, b: 0.045 },
-    hold: { a: 0.018, b: 0.03 },
-    meditation: { a: 0.01, b: 0.05 },
+    breathing: { a: 0.09, b: 0.11 },
+    hold: { a: 0.045, b: 0.075 },
+    meditation: { a: 0.025, b: 0.125 },
   },
   ocean: {
-    breathing: { a: 0.12, b: 0.05 },
-    hold: { a: 0.08, b: 0.04 },
-    meditation: { a: 0.06, b: 0.05 },
+    breathing: { a: 0.3, b: 0.125 },
+    hold: { a: 0.2, b: 0.1 },
+    meditation: { a: 0.15, b: 0.125 },
   },
   rain: {
-    breathing: { a: 0.05, b: 0.035 },
-    hold: { a: 0.035, b: 0.025 },
-    meditation: { a: 0.025, b: 0.03 },
+    breathing: { a: 0.125, b: 0.09 },
+    hold: { a: 0.09, b: 0.065 },
+    meditation: { a: 0.065, b: 0.075 },
   },
 };
 

@@ -40,6 +40,7 @@ export type Phase =
   | 'BREATHING_EXHALE'
   | 'APNEA'
   | 'RECOVERY_HOLD'
+  | 'RECOVERY_RELEASE'
   | 'MEDITATION'
   | 'ALL_COMPLETE';
 

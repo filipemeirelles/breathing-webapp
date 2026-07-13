@@ -1,5 +1,14 @@
 import type { ExerciseConfig, Phase } from '../types';
-import { buildTimeline, resolveRetention, type Segment } from './timeline';
+import {
+  buildTimeline,
+  resolveRetention,
+  restartApnea,
+  restartBreathing,
+  restartMeditation,
+  restartPrepare,
+  restartRelease,
+  type Segment,
+} from './timeline';
 
 /**
  * Saída de áudio que o motor agenda no relógio do AudioContext. Injetável
@@ -113,6 +122,62 @@ export class BreathEngine {
     if (this.done || seg?.phase !== 'APNEA' || !seg.countUp) return;
     this.segments = resolveRetention(this.cfg, this.segments, now);
     this.advance(now);
+    this.scheduleAhead();
+  }
+
+  /**
+   * Reinicia a fase atual do zero (ex.: uma ligação interrompeu a
+   * respiração — refaz o round inteiro em vez de retomar no meio).
+   * Na recuperação, "voltar" significa desfazer a apnéia que acabou de
+   * terminar (por exemplo um toque acidental em "Respirar") e refazê-la.
+   */
+  restartCurrentPhase() {
+    if (this.done) return;
+    const now = this.sink.now() + START_DELAY_SEC;
+    const seg = this.segments[this.index];
+    if (!seg) return;
+
+    let rebuilt: Segment[];
+    let spliceIdx: number;
+
+    switch (seg.phase) {
+      case 'PREPARE':
+        rebuilt = restartPrepare(this.cfg, now);
+        spliceIdx = 0;
+        break;
+      case 'BREATHING_INHALE':
+      case 'BREATHING_EXHALE':
+        rebuilt = restartBreathing(this.cfg, seg.round, now);
+        spliceIdx = this.segments.findIndex((s) => s.round === seg.round);
+        break;
+      case 'APNEA':
+        rebuilt = restartApnea(this.cfg, seg.round, now);
+        spliceIdx = this.segments.findIndex((s) => s.round === seg.round && s.phase === 'APNEA');
+        break;
+      case 'RECOVERY_HOLD':
+        // Volta para a apneia deste round (desfaz o fim da retenção).
+        rebuilt = restartApnea(this.cfg, seg.round, now);
+        spliceIdx = this.segments.findIndex((s) => s.round === seg.round && s.phase === 'APNEA');
+        this.retention.pop();
+        break;
+      case 'RECOVERY_RELEASE':
+        rebuilt = restartRelease(this.cfg, seg.round, now);
+        spliceIdx = this.segments.findIndex((s) => s.round === seg.round && s.phase === 'RECOVERY_RELEASE');
+        break;
+      case 'MEDITATION':
+        rebuilt = restartMeditation(this.cfg, now);
+        spliceIdx = this.index;
+        break;
+      default:
+        return;
+    }
+
+    if (spliceIdx < 0) spliceIdx = this.index;
+    this.segments = [...this.segments.slice(0, spliceIdx), ...rebuilt];
+    this.index = spliceIdx;
+    this.scheduleCursor = spliceIdx;
+    this.sink.cancelScheduled();
+    this.emitSegment(this.segments[this.index]);
     this.scheduleAhead();
   }
 
@@ -250,6 +315,10 @@ export class BreathEngine {
       case 'RECOVERY_HOLD':
         // A respiração profunda de recuperação do WHM.
         this.sink.scheduleBreath('inhale', seg.start, Math.min(2.5, dur));
+        break;
+      case 'RECOVERY_RELEASE':
+        // Solta o ar retido antes do próximo round.
+        this.sink.scheduleBreath('exhale', seg.start, dur);
         break;
       case 'MEDITATION':
         this.sink.scheduleGong(seg.start);

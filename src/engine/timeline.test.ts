@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { ExerciseConfig } from '../types';
 import { UNLIMITED_MEDITATION } from '../types';
-import { buildTimeline, resolveRetention, segmentIndexAt } from './timeline';
+import {
+  buildTimeline,
+  resolveRetention,
+  restartApnea,
+  restartBreathing,
+  restartRecovery,
+  segmentIndexAt,
+} from './timeline';
 
 const baseConfig: ExerciseConfig = {
   rounds: 2,
@@ -30,17 +37,19 @@ describe('buildTimeline (countdown)', () => {
 
     expect(segs[7]).toMatchObject({ phase: 'APNEA', round: 0, start: 117, end: 177 });
     expect(segs[8]).toMatchObject({ phase: 'RECOVERY_HOLD', round: 0, start: 177, end: 192 });
+    // Solta o ar retido antes do próximo round
+    expect(segs[9]).toMatchObject({ phase: 'RECOVERY_RELEASE', round: 0, start: 192, end: 194 });
 
-    // Round 1 breathing starts right after recovery
-    expect(segs[9]).toMatchObject({ phase: 'BREATHING_INHALE', round: 1, breath: 1, start: 192 });
+    // Round 1 breathing só começa depois de soltar o ar
+    expect(segs[10]).toMatchObject({ phase: 'BREATHING_INHALE', round: 1, breath: 1, start: 194 });
     // Round 1 apnea uses its own configured time (90s)
     const apnea1 = segs.find((s) => s.phase === 'APNEA' && s.round === 1)!;
     expect(apnea1.end - apnea1.start).toBe(90);
 
     const last = segs[segs.length - 1];
     expect(last.phase).toBe('ALL_COMPLETE');
-    // 5 prep + 2*(12 breathing) + 60 + 90 apnea + 2*15 recovery
-    expect(last.start).toBe(100 + 5 + 24 + 60 + 90 + 30);
+    // 5 prep + 2*(12 breathing) + 60 + 90 apnea + 2*15 recovery + 2*2 release
+    expect(last.start).toBe(100 + 5 + 24 + 60 + 90 + 30 + 4);
   });
 
   it('appends a meditation segment when configured', () => {
@@ -74,7 +83,7 @@ describe('buildTimeline (countup) + resolveRetention', () => {
     expect(last).toMatchObject({ phase: 'APNEA', round: 0, countUp: true, end: Infinity });
   });
 
-  it('resolves retention and continues with recovery and the next round', () => {
+  it('resolves retention and continues with recovery, release and the next round', () => {
     const segs = buildTimeline(countupConfig, 0);
     const apneaStart = segs[segs.length - 1].start;
     const resolved = resolveRetention(countupConfig, segs, apneaStart + 42);
@@ -85,9 +94,12 @@ describe('buildTimeline (countup) + resolveRetention', () => {
     const recovery = resolved.find((s) => s.phase === 'RECOVERY_HOLD' && s.round === 0)!;
     expect(recovery).toMatchObject({ start: apnea.end, end: apnea.end + 15 });
 
-    // Next round's breathing resumes and ends at another open apnea
+    const release = resolved.find((s) => s.phase === 'RECOVERY_RELEASE' && s.round === 0)!;
+    expect(release).toMatchObject({ start: recovery.end, end: recovery.end + 2 });
+
+    // Next round's breathing resumes only after soltar o ar, and ends at another open apnea
     const round1Inhale = resolved.find((s) => s.phase === 'BREATHING_INHALE' && s.round === 1)!;
-    expect(round1Inhale.start).toBe(recovery.end);
+    expect(round1Inhale.start).toBe(release.end);
     const last = resolved[resolved.length - 1];
     expect(last).toMatchObject({ phase: 'APNEA', round: 1, end: Infinity });
   });
@@ -98,7 +110,7 @@ describe('buildTimeline (countup) + resolveRetention', () => {
     const resolved = resolveRetention(oneRound, segs, segs[segs.length - 1].start + 30);
 
     const phases = resolved.map((s) => s.phase);
-    expect(phases.slice(-3)).toEqual(['RECOVERY_HOLD', 'MEDITATION', 'ALL_COMPLETE']);
+    expect(phases.slice(-4)).toEqual(['RECOVERY_HOLD', 'RECOVERY_RELEASE', 'MEDITATION', 'ALL_COMPLETE']);
   });
 
   it('is a no-op when the last segment is not an open apnea', () => {
@@ -114,5 +126,32 @@ describe('segmentIndexAt', () => {
     expect(segs[segmentIndexAt(segs, 5)].phase).toBe('BREATHING_INHALE'); // boundary belongs to next
     expect(segs[segmentIndexAt(segs, 20)].phase).toBe('APNEA');
     expect(segs[segmentIndexAt(segs, 10_000)].phase).toBe('ALL_COMPLETE');
+  });
+});
+
+describe('restart helpers', () => {
+  it('restartBreathing rebuilds the round from breath 1', () => {
+    const segs = restartBreathing(baseConfig, 0, 500);
+    expect(segs[0]).toMatchObject({ phase: 'BREATHING_INHALE', round: 0, breath: 1, start: 500 });
+    const apnea = segs.find((s) => s.phase === 'APNEA' && s.round === 0)!;
+    expect(apnea.start).toBe(500 + 12); // 3 respirações * 4s
+  });
+
+  it('restartApnea (countdown) restores the full configured time', () => {
+    const segs = restartApnea(baseConfig, 1, 1000);
+    expect(segs[0]).toMatchObject({ phase: 'APNEA', round: 1, start: 1000, end: 1090 }); // apneaTimesSeconds[1]=90
+  });
+
+  it('restartApnea (countup) reopens a fresh count-up hold', () => {
+    const countupConfig: ExerciseConfig = { ...baseConfig, retentionMode: 'countup' };
+    const segs = restartApnea(countupConfig, 0, 1000);
+    expect(segs).toEqual([{ phase: 'APNEA', round: 0, breath: 0, start: 1000, end: Infinity, countUp: true }]);
+  });
+
+  it('restartRecovery goes straight to a fresh recovery hold followed by release', () => {
+    const segs = restartRecovery(baseConfig, 0, 200);
+    expect(segs[0]).toMatchObject({ phase: 'RECOVERY_HOLD', round: 0, start: 200, end: 215 });
+    const release = segs.find((s) => s.phase === 'RECOVERY_RELEASE')!;
+    expect(release).toMatchObject({ start: 215, end: 217 });
   });
 });

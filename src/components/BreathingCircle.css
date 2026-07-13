@@ -65,6 +65,12 @@
   background: radial-gradient(circle at 40% 35%, #d8f0fc, #b8dcf8 40%, #c4b8f0 100%);
 }
 
+/* Release: solta o ar retido na recuperação, mesmo movimento de uma expiração */
+.breathing-circle[data-phase="RECOVERY_RELEASE"] {
+  animation: exhale var(--breath-duration, 2s) ease-in-out forwards;
+  background: radial-gradient(circle at 40% 35%, #d8f0fc, #b8dcf8 40%, #c4b8f0 100%);
+}
+
 @keyframes inhale {
   from { transform: scale(0.45); }
   to   { transform: scale(1); }

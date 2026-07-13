@@ -17,6 +17,7 @@ const LABELS: Record<Phase, string> = {
   BREATHING_EXHALE: 'Expire',
   APNEA: 'Apnéia',
   RECOVERY_HOLD: 'Segure o ar',
+  RECOVERY_RELEASE: 'Solte o ar',
   MEDITATION: 'Meditação',
   ALL_COMPLETE: '',
 };
@@ -27,6 +28,7 @@ const SUBLABELS: Record<Phase, string> = {
   BREATHING_EXHALE: 'pela boca',
   APNEA: 'Segure a respiração',
   RECOVERY_HOLD: 'inspire fundo',
+  RECOVERY_RELEASE: 'relaxe e solte',
   MEDITATION: 'relaxe e observe',
   ALL_COMPLETE: '',
 };
