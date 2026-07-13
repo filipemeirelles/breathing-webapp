@@ -1,8 +1,10 @@
 .exercise-page {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
-  padding: 40px 20px;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  padding: 24px 16px;
   align-items: center;
   gap: 0;
 }
@@ -10,17 +12,18 @@
 .exercise-header {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   width: 100%;
   max-width: 500px;
   justify-content: space-between;
-  margin-bottom: 60px;
+  flex-shrink: 0;
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .phase-badge {
@@ -33,11 +36,19 @@
   padding: 8px 16px;
   border-radius: 40px;
   box-shadow: var(--shadow);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  /* O label sob o círculo já diz a fase — o badge não cabe ao lado dos botões */
+  .phase-badge {
+    display: none;
+  }
 }
 
 .mute-btn {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--surface);
   box-shadow: var(--shadow);
@@ -56,15 +67,27 @@
 
 .exercise-main {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 40px;
+  gap: 28px;
+}
+
+/* Altura fixa: o botão de ação aparece/some sem deslocar o círculo */
+.action-slot {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .breathe-btn {
-  padding: 16px 48px;
+  min-height: 56px;
+  min-width: 200px;
+  padding: 14px 48px;
   background: linear-gradient(135deg, var(--accent), var(--accent2));
   color: white;
   border-radius: 50px;

@@ -6,6 +6,18 @@
   background: var(--surface);
   border-radius: 40px;
   box-shadow: var(--shadow);
+  min-width: 0;
+}
+
+@media (max-width: 480px) {
+  .round-progress {
+    gap: 8px;
+    padding: 12px 14px;
+  }
+
+  .round-text {
+    display: none;
+  }
 }
 
 .round-text {
@@ -42,4 +54,5 @@
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--text);
+  white-space: nowrap;
 }

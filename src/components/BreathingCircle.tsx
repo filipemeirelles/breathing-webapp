@@ -51,7 +51,7 @@ export default function BreathingCircle({ phase, breathCount, totalBreaths, seco
         data-phase={phase}
         key={`${phase}-${breathCount}`}
       />
-      <div>
+      <div className="breathing-info">
         <div className="breathing-label">{LABELS[phase]}</div>
         <div className="breathing-sublabel">{SUBLABELS[phase]}</div>
         {isBreathing && (

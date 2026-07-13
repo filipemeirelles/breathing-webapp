@@ -1,16 +1,25 @@
 import type { AudioSink } from './engine/breathEngine';
+import type { Soundscape } from './types';
+
+type AmbienceMode = 'breathing' | 'hold' | 'meditation';
 
 let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
 
-let bgNoise: AudioBufferSourceNode | null = null;
-let bgDrone: OscillatorNode | null = null;
-let bgDroneLfo: OscillatorNode | null = null;
-let bgNoiseGain: GainNode | null = null;
-let bgDroneGain: GainNode | null = null;
-
 let inhaleBuffer: AudioBuffer | null = null;
-let exhaleBuffer: AudioBuffer | null = null;
+let noiseWhite: AudioBuffer | null = null;
+let noiseBrown: AudioBuffer | null = null;
+
+// Camadas do som de fundo ativo (fontes + ganhos controlados por setAmbience)
+let bgSources: AudioScheduledSourceNode[] = [];
+let bgLayerA: GainNode | null = null;
+let bgLayerB: GainNode | null = null;
+let activeSoundscape: Soundscape = 'none';
+
+// Binaural: dois osciladores pan L/R; a diferença de frequência é a "batida"
+let binauralL: OscillatorNode | null = null;
+let binauralR: OscillatorNode | null = null;
+let binauralGain: GainNode | null = null;
 
 /** Fontes agendadas ainda não iniciadas, para cancelamento no stop(). */
 const scheduledSources = new Map<AudioScheduledSourceNode, number>();
@@ -20,10 +29,32 @@ const BREATH_GAIN = 0.9;
 const MIN_RATE = 0.6;
 const MAX_RATE = 1.4;
 
-const AMBIENCE_LEVELS: Record<'breathing' | 'hold' | 'meditation', { noise: number; drone: number }> = {
-  breathing: { noise: 0.035, drone: 0.045 },
-  hold: { noise: 0.018, drone: 0.03 },
-  meditation: { noise: 0.01, drone: 0.05 },
+const BINAURAL_CARRIER_HZ = 200;
+const BINAURAL_GAIN = 0.05;
+/** Batida por fase: alpha na respiração ativa, theta na retenção/meditação. */
+const BINAURAL_BEAT_HZ: Record<AmbienceMode, number> = {
+  breathing: 10,
+  hold: 6,
+  meditation: 4.5,
+};
+
+/** Ganhos das duas camadas de cada paisagem sonora, por fase. */
+const SOUNDSCAPE_LEVELS: Record<Exclude<Soundscape, 'none'>, Record<AmbienceMode, { a: number; b: number }>> = {
+  breeze: {
+    breathing: { a: 0.035, b: 0.045 },
+    hold: { a: 0.018, b: 0.03 },
+    meditation: { a: 0.01, b: 0.05 },
+  },
+  ocean: {
+    breathing: { a: 0.12, b: 0.05 },
+    hold: { a: 0.08, b: 0.04 },
+    meditation: { a: 0.06, b: 0.05 },
+  },
+  rain: {
+    breathing: { a: 0.05, b: 0.035 },
+    hold: { a: 0.035, b: 0.025 },
+    meditation: { a: 0.025, b: 0.03 },
+  },
 };
 
 function getCtx(): AudioContext {
@@ -46,6 +77,34 @@ function track(source: AudioScheduledSourceNode, startTime: number) {
   source.addEventListener('ended', () => scheduledSources.delete(source));
 }
 
+function makeNoiseBuffer(kind: 'white' | 'brown', seconds: number): AudioBuffer {
+  const c = getCtx();
+  const rate = c.sampleRate;
+  const buf = c.createBuffer(1, Math.floor(rate * seconds), rate);
+  const data = buf.getChannelData(0);
+  if (kind === 'white') {
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  } else {
+    let last = 0;
+    for (let i = 0; i < data.length; i++) {
+      const w = Math.random() * 2 - 1;
+      last = (last + 0.02 * w) / 1.02;
+      data[i] = last * 3.5;
+    }
+  }
+  return buf;
+}
+
+function getWhiteNoise(): AudioBuffer {
+  if (!noiseWhite) noiseWhite = makeNoiseBuffer('white', 8);
+  return noiseWhite;
+}
+
+function getBrownNoise(): AudioBuffer {
+  if (!noiseBrown) noiseBrown = makeNoiseBuffer('brown', 8);
+  return noiseBrown;
+}
+
 async function loadBuffer(url: string): Promise<AudioBuffer> {
   const response = await fetch(url);
   const arrayBuffer = await response.arrayBuffer();
@@ -55,12 +114,7 @@ async function loadBuffer(url: string): Promise<AudioBuffer> {
 export async function initAudio() {
   const c = getCtx();
   await c.resume();
-
-  const base = import.meta.env.BASE_URL;
-  [inhaleBuffer, exhaleBuffer] = await Promise.all([
-    loadBuffer(`${base}inhale.ogg`),
-    loadBuffer(`${base}exhale.ogg`),
-  ]);
+  inhaleBuffer = await loadBuffer(`${import.meta.env.BASE_URL}inhale.ogg`);
 }
 
 export function setMuted(muted: boolean) {
@@ -68,92 +122,172 @@ export function setMuted(muted: boolean) {
   getMaster().gain.setTargetAtTime(muted ? 0 : 1, c.currentTime, 0.15);
 }
 
-export function startBackground() {
+function makeLoop(buffer: AudioBuffer): AudioBufferSourceNode {
+  const c = getCtx();
+  const src = c.createBufferSource();
+  src.buffer = buffer;
+  src.loop = true;
+  return src;
+}
+
+export function startBackground(soundscape: Soundscape = 'breeze', binaural = false) {
   const c = getCtx();
   const mg = getMaster();
+  activeSoundscape = soundscape;
 
-  // Brown noise — looping buffer of 5 seconds
-  const rate = c.sampleRate;
-  const buf = c.createBuffer(1, rate * 5, rate);
-  const data = buf.getChannelData(0);
-  let last = 0;
-  for (let i = 0; i < data.length; i++) {
-    const w = Math.random() * 2 - 1;
-    last = (last + 0.02 * w) / 1.02;
-    data[i] = last * 3.5;
+  if (soundscape !== 'none') {
+    const levels = SOUNDSCAPE_LEVELS[soundscape].breathing;
+    bgLayerA = c.createGain();
+    bgLayerA.gain.value = levels.a;
+    bgLayerA.connect(mg);
+    bgLayerB = c.createGain();
+    bgLayerB.gain.value = levels.b;
+    bgLayerB.connect(mg);
+
+    if (soundscape === 'breeze') {
+      // Brisa: brown noise suave + drone 110Hz com vibrato lento (som original)
+      const noise = makeLoop(getBrownNoise());
+      noise.connect(bgLayerA);
+      noise.start();
+
+      const drone = c.createOscillator();
+      drone.type = 'sine';
+      drone.frequency.value = 110;
+      const lfo = c.createOscillator();
+      lfo.frequency.value = 0.12;
+      const lfoGain = c.createGain();
+      lfoGain.gain.value = 1.2;
+      lfo.connect(lfoGain);
+      lfoGain.connect(drone.frequency);
+      drone.connect(bgLayerB);
+      drone.start();
+      lfo.start();
+      bgSources = [noise, drone, lfo];
+    } else if (soundscape === 'ocean') {
+      // Oceano: ondulação lenta (LFO no ganho) sobre brown noise filtrado,
+      // mais uma camada grave contínua.
+      const waves = makeLoop(getBrownNoise());
+      const wavesLp = c.createBiquadFilter();
+      wavesLp.type = 'lowpass';
+      wavesLp.frequency.value = 520;
+      const swell = c.createGain();
+      swell.gain.value = 0.55;
+      const lfo = c.createOscillator();
+      lfo.frequency.value = 0.07;
+      const lfoDepth = c.createGain();
+      lfoDepth.gain.value = 0.45;
+      lfo.connect(lfoDepth);
+      lfoDepth.connect(swell.gain);
+      waves.connect(wavesLp);
+      wavesLp.connect(swell);
+      swell.connect(bgLayerA);
+      waves.start();
+      lfo.start();
+
+      const deep = makeLoop(getBrownNoise());
+      const deepLp = c.createBiquadFilter();
+      deepLp.type = 'lowpass';
+      deepLp.frequency.value = 220;
+      deep.connect(deepLp);
+      deepLp.connect(bgLayerB);
+      deep.start();
+      bgSources = [waves, lfo, deep];
+    } else {
+      // Chuva: white noise em banda alta suave + corpo grave
+      const patter = makeLoop(getWhiteNoise());
+      const bp = c.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1800;
+      bp.Q.value = 0.7;
+      patter.connect(bp);
+      bp.connect(bgLayerA);
+      patter.start();
+
+      const body = makeLoop(getBrownNoise());
+      const lp = c.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 400;
+      body.connect(lp);
+      lp.connect(bgLayerB);
+      body.start();
+      bgSources = [patter, body];
+    }
   }
 
-  bgNoise = c.createBufferSource();
-  bgNoise.buffer = buf;
-  bgNoise.loop = true;
+  if (binaural) {
+    binauralGain = c.createGain();
+    binauralGain.gain.value = 0;
+    binauralGain.gain.setTargetAtTime(BINAURAL_GAIN, c.currentTime, 2);
+    binauralGain.connect(mg);
 
-  bgNoiseGain = c.createGain();
-  bgNoiseGain.gain.value = AMBIENCE_LEVELS.breathing.noise;
-  bgNoise.connect(bgNoiseGain);
-  bgNoiseGain.connect(mg);
-  bgNoise.start();
+    const beat = BINAURAL_BEAT_HZ.breathing;
+    binauralL = c.createOscillator();
+    binauralL.type = 'sine';
+    binauralL.frequency.value = BINAURAL_CARRIER_HZ - beat / 2;
+    binauralR = c.createOscillator();
+    binauralR.type = 'sine';
+    binauralR.frequency.value = BINAURAL_CARRIER_HZ + beat / 2;
 
-  // Soft drone at A2 (110 Hz) with slow vibrato
-  bgDrone = c.createOscillator();
-  bgDrone.type = 'sine';
-  bgDrone.frequency.value = 110;
-
-  bgDroneLfo = c.createOscillator();
-  bgDroneLfo.frequency.value = 0.12;
-  const lfoGain = c.createGain();
-  lfoGain.gain.value = 1.2;
-  bgDroneLfo.connect(lfoGain);
-  lfoGain.connect(bgDrone.frequency);
-
-  bgDroneGain = c.createGain();
-  bgDroneGain.gain.value = AMBIENCE_LEVELS.breathing.drone;
-  bgDrone.connect(bgDroneGain);
-  bgDroneGain.connect(mg);
-
-  bgDrone.start();
-  bgDroneLfo.start();
+    const panL = new StereoPannerNode(c, { pan: -1 });
+    const panR = new StereoPannerNode(c, { pan: 1 });
+    binauralL.connect(panL);
+    panL.connect(binauralGain);
+    binauralR.connect(panR);
+    panR.connect(binauralGain);
+    binauralL.start();
+    binauralR.start();
+  }
 }
 
 export function stopBackground() {
   const c = getCtx();
   const stopAt = c.currentTime + 0.35;
-  bgNoiseGain?.gain.setTargetAtTime(0, c.currentTime, 0.1);
-  bgDroneGain?.gain.setTargetAtTime(0, c.currentTime, 0.1);
-  try { bgNoise?.stop(stopAt); } catch { /* already stopped */ }
-  try { bgDrone?.stop(stopAt); } catch { /* already stopped */ }
-  try { bgDroneLfo?.stop(stopAt); } catch { /* already stopped */ }
-  bgNoise = null;
-  bgDrone = null;
-  bgDroneLfo = null;
-  bgNoiseGain = null;
-  bgDroneGain = null;
+  bgLayerA?.gain.setTargetAtTime(0, c.currentTime, 0.1);
+  bgLayerB?.gain.setTargetAtTime(0, c.currentTime, 0.1);
+  binauralGain?.gain.setTargetAtTime(0, c.currentTime, 0.1);
+  for (const src of bgSources) {
+    try { src.stop(stopAt); } catch { /* already stopped */ }
+  }
+  for (const osc of [binauralL, binauralR]) {
+    try { osc?.stop(stopAt); } catch { /* already stopped */ }
+  }
+  bgSources = [];
+  bgLayerA = null;
+  bgLayerB = null;
+  binauralL = null;
+  binauralR = null;
+  binauralGain = null;
 }
 
-function setAmbience(mode: 'breathing' | 'hold' | 'meditation', atTime: number) {
+function setAmbience(mode: AmbienceMode, atTime: number) {
   const c = getCtx();
   const t = Math.max(atTime, c.currentTime);
-  const levels = AMBIENCE_LEVELS[mode];
-  bgNoiseGain?.gain.setTargetAtTime(levels.noise, t, 1.5);
-  bgDroneGain?.gain.setTargetAtTime(levels.drone, t, 1.5);
+  if (activeSoundscape !== 'none' && bgLayerA && bgLayerB) {
+    const levels = SOUNDSCAPE_LEVELS[activeSoundscape][mode];
+    bgLayerA.gain.setTargetAtTime(levels.a, t, 1.5);
+    bgLayerB.gain.setTargetAtTime(levels.b, t, 1.5);
+  }
+  if (binauralL && binauralR) {
+    const beat = BINAURAL_BEAT_HZ[mode];
+    binauralL.frequency.setTargetAtTime(BINAURAL_CARRIER_HZ - beat / 2, t, 3);
+    binauralR.frequency.setTargetAtTime(BINAURAL_CARRIER_HZ + beat / 2, t, 3);
+  }
 }
 
 /**
- * Agenda o som de respiração no relógio de áudio, esticado/comprimido via
- * playbackRate (limitado) para cobrir a duração da fase, com envelope de
- * ganho que termina exatamente no fim da fase.
+ * Inspiração: gravação real esticada/comprimida via playbackRate (limitado)
+ * com envelope que termina exatamente no fim da fase.
  */
-function scheduleBreath(type: 'inhale' | 'exhale', atTime: number, durationSec: number) {
+function scheduleInhale(atTime: number, durationSec: number) {
   const c = getCtx();
-  const buffer = type === 'inhale' ? inhaleBuffer : exhaleBuffer;
-  if (!buffer) return;
+  if (!inhaleBuffer) return;
 
   const t = Math.max(atTime, c.currentTime);
   const end = t + durationSec;
 
   const source = c.createBufferSource();
-  source.buffer = buffer;
-  const rate = Math.min(MAX_RATE, Math.max(MIN_RATE, buffer.duration / durationSec));
-  source.playbackRate.value = rate;
+  source.buffer = inhaleBuffer;
+  source.playbackRate.value = Math.min(MAX_RATE, Math.max(MIN_RATE, inhaleBuffer.duration / durationSec));
 
   const gain = c.createGain();
   gain.gain.setValueAtTime(0, t);
@@ -166,6 +300,63 @@ function scheduleBreath(type: 'inhale' | 'exhale', atTime: number, durationSec: 
   source.start(t);
   source.stop(end + 0.05);
   track(source, t);
+}
+
+/**
+ * Expiração sintetizada: sopro de ruído com filtro descendo ao longo da fase.
+ * Escala a qualquer ritmo sem os artefatos de esticar uma gravação.
+ */
+function scheduleSynthExhale(atTime: number, durationSec: number) {
+  const c = getCtx();
+  const t = Math.max(atTime, c.currentTime);
+  const end = t + durationSec;
+
+  const source = c.createBufferSource();
+  source.buffer = getWhiteNoise();
+  // Offset aleatório no buffer para cada expiração soar levemente diferente
+  source.loop = true;
+  source.loopStart = 0;
+  source.loopEnd = source.buffer.duration;
+
+  const hp = c.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 150;
+
+  // O "sopro": passa-baixa caindo de ~1400Hz para ~380Hz durante a fase
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 0.7;
+  lp.frequency.setValueAtTime(1400, t);
+  lp.frequency.exponentialRampToValueAtTime(380, end);
+
+  // Leve corpo "de boca" em torno de 480Hz
+  const formant = c.createBiquadFilter();
+  formant.type = 'peaking';
+  formant.frequency.value = 480;
+  formant.Q.value = 1.1;
+  formant.gain.value = 5;
+
+  const gain = c.createGain();
+  const attack = Math.min(0.35, durationSec * 0.15);
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(0.55, t + attack);
+  gain.gain.setTargetAtTime(0.2, t + attack, durationSec * 0.35);
+  gain.gain.setValueAtTime(0.2, Math.max(t + attack, end - 0.2));
+  gain.gain.linearRampToValueAtTime(0.0001, end);
+
+  source.connect(hp);
+  hp.connect(lp);
+  lp.connect(formant);
+  formant.connect(gain);
+  gain.connect(getMaster());
+  source.start(t, Math.random() * 4);
+  source.stop(end + 0.05);
+  track(source, t);
+}
+
+function scheduleBreath(type: 'inhale' | 'exhale', atTime: number, durationSec: number) {
+  if (type === 'inhale') scheduleInhale(atTime, durationSec);
+  else scheduleSynthExhale(atTime, durationSec);
 }
 
 /** Gongo sintetizado: parciais levemente inarmônicas com decaimento longo. */

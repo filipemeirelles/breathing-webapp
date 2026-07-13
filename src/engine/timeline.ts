@@ -1,4 +1,5 @@
 import type { ExerciseConfig, Phase } from '../types';
+import { UNLIMITED_MEDITATION } from '../types';
 
 /**
  * Um segmento da sessão com início/fim em tempos absolutos do relógio de
@@ -57,6 +58,11 @@ function buildFromRound(config: ExerciseConfig, round: number, t: number): Segme
 
 function buildEnding(config: ExerciseConfig, t: number): Segment[] {
   const out: Segment[] = [];
+  if (config.meditationSeconds === UNLIMITED_MEDITATION) {
+    // Sem limite: conta pra cima até o usuário concluir (finishEarly).
+    out.push(seg('MEDITATION', config.rounds - 1, 0, t, Infinity, true));
+    return out;
+  }
   if (config.meditationSeconds > 0) {
     out.push(seg('MEDITATION', config.rounds - 1, 0, t, t + config.meditationSeconds));
     t += config.meditationSeconds;

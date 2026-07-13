@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import type { ExerciseConfig, ExerciseState, Phase, SessionResult } from '../types';
+import { UNLIMITED_MEDITATION } from '../types';
 import BreathingCircle from '../components/BreathingCircle';
 import RoundProgress from '../components/RoundProgress';
 import { BreathEngine, type EngineEvent } from '../engine/breathEngine';
@@ -96,7 +97,7 @@ export default function Exercise({ config, onComplete }: Props) {
         dispatch({ type: 'SET_PAUSED', paused: true });
       }
     });
-    startBackground();
+    startBackground(config.soundscape, config.binaural);
     engine.start();
     void acquireWakeLock();
 
@@ -136,6 +137,8 @@ export default function Exercise({ config, onComplete }: Props) {
   }
 
   const showBreatheButton = phase === 'APNEA' && config.retentionMode === 'countup';
+  const showFinishMeditation =
+    phase === 'MEDITATION' && config.meditationSeconds === UNLIMITED_MEDITATION;
 
   return (
     <div className="exercise-page">
@@ -161,11 +164,19 @@ export default function Exercise({ config, onComplete }: Props) {
           breathPaceMs={config.breathPaceMs}
           paused={paused}
         />
-        {showBreatheButton && !paused && (
-          <button className="breathe-btn" onClick={() => engineRef.current?.endRetentionNow()}>
-            Respirar
-          </button>
-        )}
+        {/* Altura reservada: o botão aparece sem deslocar o círculo */}
+        <div className="action-slot">
+          {showBreatheButton && !paused && (
+            <button className="breathe-btn" onClick={() => engineRef.current?.endRetentionNow()}>
+              Respirar
+            </button>
+          )}
+          {showFinishMeditation && !paused && (
+            <button className="breathe-btn" onClick={handleFinishEarly}>
+              Concluir
+            </button>
+          )}
+        </div>
       </main>
 
       {paused && (

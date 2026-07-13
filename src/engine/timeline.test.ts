@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ExerciseConfig } from '../types';
+import { UNLIMITED_MEDITATION } from '../types';
 import { buildTimeline, resolveRetention, segmentIndexAt } from './timeline';
 
 const baseConfig: ExerciseConfig = {
@@ -11,6 +12,8 @@ const baseConfig: ExerciseConfig = {
   recoveryHoldSeconds: 15,
   meditationSeconds: 0,
   prepSeconds: 5,
+  soundscape: 'breeze',
+  binaural: false,
 };
 
 describe('buildTimeline (countdown)', () => {
@@ -46,6 +49,14 @@ describe('buildTimeline (countdown)', () => {
     const complete = segs[segs.length - 1];
     expect(meditation.end - meditation.start).toBe(300);
     expect(complete.start).toBe(meditation.end);
+  });
+
+  it('ends with an open count-up meditation when unlimited', () => {
+    const segs = buildTimeline({ ...baseConfig, meditationSeconds: UNLIMITED_MEDITATION }, 0);
+    const last = segs[segs.length - 1];
+    expect(last).toMatchObject({ phase: 'MEDITATION', end: Infinity, countUp: true });
+    // Sem ALL_COMPLETE: a sessão termina quando o usuário conclui
+    expect(segs.some((s) => s.phase === 'ALL_COMPLETE')).toBe(false);
   });
 
   it('skips PREPARE when prepSeconds is 0', () => {

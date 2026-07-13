@@ -121,7 +121,8 @@ export class BreathEngine {
     if (this.done) return;
     const now = this.sink.now();
     const seg = this.segments[this.index];
-    if (seg?.phase === 'APNEA' && now > seg.start) {
+    // Retenções de menos de 1s não dizem nada — não poluem o resumo.
+    if (seg?.phase === 'APNEA' && now > seg.start + 1) {
       this.retention.push(Math.round(Math.min(now, seg.end) - seg.start));
     }
     this.finish(now);

@@ -1,4 +1,8 @@
 export type RetentionMode = 'countdown' | 'countup';
+export type Soundscape = 'breeze' | 'ocean' | 'rain' | 'none';
+
+/** Sentinela de meditationSeconds: medita até o usuário tocar em "Concluir". */
+export const UNLIMITED_MEDITATION = -1;
 
 export interface ExerciseConfig {
   rounds: number;
@@ -9,9 +13,12 @@ export interface ExerciseConfig {
   apneaTimesSeconds: number[];
   retentionMode: RetentionMode;
   recoveryHoldSeconds: number;
-  /** 0 = meditação desativada. */
+  /** 0 = desativada; UNLIMITED_MEDITATION = sem limite. */
   meditationSeconds: number;
   prepSeconds: number;
+  soundscape: Soundscape;
+  /** Batidas binaurais (requer fones de ouvido). */
+  binaural: boolean;
 }
 
 export const DEFAULT_CONFIG: ExerciseConfig = {
@@ -23,6 +30,8 @@ export const DEFAULT_CONFIG: ExerciseConfig = {
   recoveryHoldSeconds: 15,
   meditationSeconds: 0,
   prepSeconds: 5,
+  soundscape: 'breeze',
+  binaural: false,
 };
 
 export type Phase =
