@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "breathing_webapp",
+  "project_id": "1df41d63-ce46-452a-8e49-a9cab8d86a70"
+}
