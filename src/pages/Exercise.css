@@ -1,8 +1,10 @@
 .exercise-page {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
-  padding: 40px 20px;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  padding: 24px 16px;
   align-items: center;
   gap: 0;
 }
@@ -10,17 +12,18 @@
 .exercise-header {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   width: 100%;
   max-width: 500px;
   justify-content: space-between;
-  margin-bottom: 60px;
+  flex-shrink: 0;
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .phase-badge {
@@ -33,11 +36,19 @@
   padding: 8px 16px;
   border-radius: 40px;
   box-shadow: var(--shadow);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  /* O label sob o círculo já diz a fase — o badge não cabe ao lado dos botões */
+  .phase-badge {
+    display: none;
+  }
 }
 
 .mute-btn {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--surface);
   box-shadow: var(--shadow);
@@ -56,7 +67,167 @@
 
 .exercise-main {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+}
+
+/* Altura fixa: o botão de ação aparece/some sem deslocar o círculo */
+.action-slot {
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+}
+
+.breathe-btn {
+  min-height: 56px;
+  min-width: 200px;
+  padding: 14px 48px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: white;
+  border-radius: 50px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 20px rgba(126, 184, 247, 0.4);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.breathe-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 28px rgba(126, 184, 247, 0.5);
+}
+
+.breathe-btn:active {
+  transform: translateY(0);
+}
+
+/* Botão gigante da apneia livre: um alvo grande no centro da tela,
+   para tocar sem precisar mirar durante o exercício. */
+.breathe-giant-circle {
+  width: min(78vw, 320px);
+  height: min(78vw, 320px);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: radial-gradient(circle at 40% 35%, #c0d8f8, #a0c4e8 40%, #c8bdf0 100%);
+  box-shadow: 0 0 0 20px rgba(164, 200, 240, 0.14), 0 0 0 40px rgba(180, 167, 232, 0.06), 0 10px 32px rgba(120, 130, 200, 0.3);
+  color: var(--text);
+  animation: breathe-tap-pulse 2.6s ease-in-out infinite;
+  transition: transform 0.15s;
+}
+
+.breathe-giant-circle:active {
+  transform: scale(0.96);
+}
+
+.breathe-giant-circle.paused {
+  animation-play-state: paused;
+}
+
+.breathe-giant-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.breathe-giant-timer {
+  font-size: 3.4rem;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.breathe-giant-hint {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--accent-dark);
+}
+
+@keyframes breathe-tap-pulse {
+  0%, 100% { box-shadow: 0 0 0 20px rgba(164, 200, 240, 0.14), 0 0 0 40px rgba(180, 167, 232, 0.06), 0 10px 32px rgba(120, 130, 200, 0.3); }
+  50%      { box-shadow: 0 0 0 28px rgba(164, 200, 240, 0.2), 0 0 0 52px rgba(180, 167, 232, 0.1), 0 10px 32px rgba(120, 130, 200, 0.3); }
+}
+
+@media (max-height: 700px) {
+  .breathe-giant-circle {
+    width: min(70vw, 250px);
+    height: min(70vw, 250px);
+  }
+
+  .breathe-giant-timer {
+    font-size: 2.6rem;
+  }
+}
+
+.pause-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(240, 244, 255, 0.85);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.pause-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 40px 32px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 340px;
+}
+
+.pause-card .breathe-btn {
+  width: 100%;
+  min-width: 0;
+}
+
+.pause-title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.finish-btn,
+.restart-btn-secondary {
+  width: 100%;
+  padding: 12px 24px;
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: 50px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.restart-btn-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.finish-btn:hover,
+.restart-btn-secondary:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
 }
