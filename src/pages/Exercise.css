@@ -107,6 +107,69 @@
   transform: translateY(0);
 }
 
+/* Botão gigante da apneia livre: um alvo grande no centro da tela,
+   para tocar sem precisar mirar durante o exercício. */
+.breathe-giant-circle {
+  width: min(78vw, 320px);
+  height: min(78vw, 320px);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: radial-gradient(circle at 40% 35%, #c0d8f8, #a0c4e8 40%, #c8bdf0 100%);
+  box-shadow: 0 0 0 20px rgba(164, 200, 240, 0.14), 0 0 0 40px rgba(180, 167, 232, 0.06), 0 10px 32px rgba(120, 130, 200, 0.3);
+  color: var(--text);
+  animation: breathe-tap-pulse 2.6s ease-in-out infinite;
+  transition: transform 0.15s;
+}
+
+.breathe-giant-circle:active {
+  transform: scale(0.96);
+}
+
+.breathe-giant-circle.paused {
+  animation-play-state: paused;
+}
+
+.breathe-giant-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.breathe-giant-timer {
+  font-size: 3.4rem;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.breathe-giant-hint {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--accent-dark);
+}
+
+@keyframes breathe-tap-pulse {
+  0%, 100% { box-shadow: 0 0 0 20px rgba(164, 200, 240, 0.14), 0 0 0 40px rgba(180, 167, 232, 0.06), 0 10px 32px rgba(120, 130, 200, 0.3); }
+  50%      { box-shadow: 0 0 0 28px rgba(164, 200, 240, 0.2), 0 0 0 52px rgba(180, 167, 232, 0.1), 0 10px 32px rgba(120, 130, 200, 0.3); }
+}
+
+@media (max-height: 700px) {
+  .breathe-giant-circle {
+    width: min(70vw, 250px);
+    height: min(70vw, 250px);
+  }
+
+  .breathe-giant-timer {
+    font-size: 2.6rem;
+  }
+}
+
 .pause-overlay {
   position: fixed;
   inset: 0;

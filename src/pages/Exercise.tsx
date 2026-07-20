@@ -60,6 +60,12 @@ const RESTART_LABELS: Partial<Record<Phase, string>> = {
 };
 const RESTART_LABEL_DEFAULT = 'Voltar ao início desta etapa';
 
+function formatSeconds(s: number) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return m > 0 ? `${m}:${sec.toString().padStart(2, '0')}` : `${sec}`;
+}
+
 interface Props {
   config: ExerciseConfig;
   onComplete: (result: SessionResult) => void;
@@ -171,21 +177,29 @@ export default function Exercise({ config, onComplete }: Props) {
       </header>
 
       <main className="exercise-main">
-        <BreathingCircle
-          phase={phase}
-          breathCount={currentBreath}
-          totalBreaths={config.breathsPerRound}
-          seconds={seconds}
-          breathPaceMs={config.breathPaceMs}
-          paused={paused}
-        />
+        {showBreatheButton ? (
+          // Círculo grande e central: toca em qualquer ponto dele, sem precisar mirar.
+          <button
+            className={`breathe-giant-circle${paused ? ' paused' : ''}`}
+            onClick={() => engineRef.current?.endRetentionNow()}
+            disabled={paused}
+          >
+            <span className="breathe-giant-label">Apnéia</span>
+            <span className="breathe-giant-timer">{formatSeconds(seconds)}</span>
+            <span className="breathe-giant-hint">Toque para respirar</span>
+          </button>
+        ) : (
+          <BreathingCircle
+            phase={phase}
+            breathCount={currentBreath}
+            totalBreaths={config.breathsPerRound}
+            seconds={seconds}
+            breathPaceMs={config.breathPaceMs}
+            paused={paused}
+          />
+        )}
         {/* Altura reservada: o botão aparece sem deslocar o círculo */}
         <div className="action-slot">
-          {showBreatheButton && !paused && (
-            <button className="breathe-btn" onClick={() => engineRef.current?.endRetentionNow()}>
-              Respirar
-            </button>
-          )}
           {showFinishMeditation && !paused && (
             <button className="breathe-btn" onClick={handleFinishEarly}>
               Concluir
