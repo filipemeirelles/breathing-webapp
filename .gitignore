@@ -32,5 +32,4 @@ dist-ssr
 *.db
 .beads-credential-key
 .beads/proxieddb/
-
 .codegraph/
