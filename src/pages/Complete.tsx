@@ -1,8 +1,8 @@
+import type { SessionResult } from '../types';
 import './Complete.css';
 
 interface Props {
-  rounds: number;
-  totalSeconds: number;
+  result: SessionResult;
   onRestart: () => void;
 }
 
@@ -13,7 +13,15 @@ function formatTime(seconds: number) {
   return `${m}min ${s > 0 ? s + 's' : ''}`;
 }
 
-export default function Complete({ rounds, totalSeconds, onRestart }: Props) {
+function formatClock(seconds: number) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+export default function Complete({ result, onRestart }: Props) {
+  const { rounds, totalSeconds, retentionSeconds, meditationSeconds } = result;
+
   return (
     <div className="complete-page">
       <div className="complete-card">
@@ -31,7 +39,7 @@ export default function Complete({ rounds, totalSeconds, onRestart }: Props) {
         </div>
 
         <h2 className="complete-title">Exercício concluído!</h2>
-        <p className="complete-sub">Muito bem. Você completou todos os rounds.</p>
+        <p className="complete-sub">Muito bem. Você completou {rounds === 1 ? '1 round' : `${rounds} rounds`}.</p>
 
         <div className="complete-stats">
           <div className="stat">
@@ -43,7 +51,28 @@ export default function Complete({ rounds, totalSeconds, onRestart }: Props) {
             <span className="stat-value">{formatTime(totalSeconds)}</span>
             <span className="stat-label">duração total</span>
           </div>
+          {meditationSeconds > 0 && (
+            <>
+              <div className="stat-divider" />
+              <div className="stat">
+                <span className="stat-value">{formatTime(meditationSeconds)}</span>
+                <span className="stat-label">meditação</span>
+              </div>
+            </>
+          )}
         </div>
+
+        {retentionSeconds.length > 0 && (
+          <div className="retention-list">
+            <span className="retention-title">Retenção por round</span>
+            {retentionSeconds.map((t, i) => (
+              <div key={i} className="retention-row">
+                <span className="retention-round">Round {i + 1}</span>
+                <span className="retention-time">{formatClock(t)}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <button className="restart-btn" onClick={onRestart}>
           Novo exercício

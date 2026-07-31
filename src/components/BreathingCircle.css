@@ -5,6 +5,14 @@
   gap: 28px;
 }
 
+/* Altura fixa para o bloco de texto: trocar de fase não desloca o círculo */
+.breathing-info {
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .breathing-circle {
   width: 220px;
   height: 220px;
@@ -15,14 +23,32 @@
   will-change: transform;
 }
 
-/* Inhale: animate scale from current size up to full */
+/* Inhale: animate scale from current size up to full.
+   Duration comes from --breath-duration (set inline from ExerciseConfig) so
+   CSS never drifts from the audio-clock timeline. */
 .breathing-circle[data-phase="BREATHING_INHALE"] {
-  animation: inhale 2s ease-in-out forwards;
+  animation: inhale var(--breath-duration, 2s) ease-in-out forwards;
 }
 
 /* Exhale: animate scale from full down to small */
 .breathing-circle[data-phase="BREATHING_EXHALE"] {
-  animation: exhale 2s ease-in-out forwards;
+  animation: exhale var(--breath-duration, 2s) ease-in-out forwards;
+}
+
+/* Prepare: contracted, gentle pulse while the countdown runs */
+.breathing-circle[data-phase="PREPARE"] {
+  transform: scale(0.45);
+  animation: apnea-pulse 4s ease-in-out infinite;
+}
+
+/* Meditation: slow, ample breathing-like pulse */
+.breathing-circle[data-phase="MEDITATION"] {
+  animation: meditation-pulse 8s ease-in-out infinite;
+  background: radial-gradient(circle at 40% 35%, #cde4fa, #aacdf0 40%, #beb0ec 100%);
+}
+
+.breathing-circle.paused {
+  animation-play-state: paused;
 }
 
 /* Apnea: stay contracted, subtle soft pulse */
@@ -39,6 +65,12 @@
   background: radial-gradient(circle at 40% 35%, #d8f0fc, #b8dcf8 40%, #c4b8f0 100%);
 }
 
+/* Release: solta o ar retido na recuperação, mesmo movimento de uma expiração */
+.breathing-circle[data-phase="RECOVERY_RELEASE"] {
+  animation: exhale var(--breath-duration, 2s) ease-in-out forwards;
+  background: radial-gradient(circle at 40% 35%, #d8f0fc, #b8dcf8 40%, #c4b8f0 100%);
+}
+
 @keyframes inhale {
   from { transform: scale(0.45); }
   to   { transform: scale(1); }
@@ -52,6 +84,11 @@
 @keyframes apnea-pulse {
   0%, 100% { box-shadow: 0 0 0 20px rgba(164, 200, 240, 0.12), 0 0 0 40px rgba(180, 167, 232, 0.05); }
   50%       { box-shadow: 0 0 0 24px rgba(164, 200, 240, 0.2), 0 0 0 48px rgba(180, 167, 232, 0.08); }
+}
+
+@keyframes meditation-pulse {
+  0%, 100% { transform: scale(0.6); }
+  50%      { transform: scale(0.85); }
 }
 
 @keyframes recovery-pulse {
@@ -93,4 +130,16 @@
   text-align: center;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+}
+
+/* Telas baixas: círculo menor para tudo caber sem rolagem */
+@media (max-height: 700px) {
+  .breathing-circle {
+    width: 176px;
+    height: 176px;
+  }
+
+  .breathing-circle-wrapper {
+    gap: 20px;
+  }
 }
