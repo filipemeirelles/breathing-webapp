@@ -1,8 +1,8 @@
 name: Deploy to GitHub Pages
 
 on:
-  push:
-    branches: [main, claude/breathing-exercise-webapp-Zuxyh]
+  # Deployment is intentionally manual until GitHub Pages is configured.
+  workflow_dispatch:
 
 permissions:
   contents: read
