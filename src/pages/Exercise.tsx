@@ -1,63 +1,33 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
-import type { ExerciseConfig, ExerciseState } from '../types';
+import type { ExerciseConfig, ExerciseState, Phase, SessionResult } from '../types';
+import { UNLIMITED_MEDITATION } from '../types';
 import BreathingCircle from '../components/BreathingCircle';
 import RoundProgress from '../components/RoundProgress';
-import { startBackground, stopBackground, playBreathTone, stopBreathTone, setMuted } from '../audio';
+import { BreathEngine, type EngineEvent } from '../engine/breathEngine';
+import { getAudioSink, startBackground, stopBackground, setMuted, onAudioStateChange } from '../audio';
+import { acquireWakeLock, releaseWakeLock } from '../wakeLock';
 import './Exercise.css';
 
-const INHALE_MS = 2000;
-const EXHALE_MS = 2000;
-const RECOVERY_SECONDS = 10;
-
 type Action =
-  | { type: 'NEXT_PHASE' }
-  | { type: 'TICK' };
-
-function nextPhase(state: ExerciseState): ExerciseState {
-  const { config, currentRound, currentBreath, phase } = state;
-
-  if (phase === 'BREATHING_INHALE') {
-    return { ...state, phase: 'BREATHING_EXHALE' };
-  }
-
-  if (phase === 'BREATHING_EXHALE') {
-    const nextBreath = currentBreath + 1;
-    if (nextBreath <= config.breathsPerRound) {
-      return { ...state, phase: 'BREATHING_INHALE', currentBreath: nextBreath };
-    }
-    return {
-      ...state,
-      phase: 'APNEA',
-      secondsLeft: config.apneaTimesSeconds[currentRound],
-    };
-  }
-
-  if (phase === 'APNEA') {
-    return { ...state, phase: 'RECOVERY_HOLD', secondsLeft: RECOVERY_SECONDS };
-  }
-
-  if (phase === 'RECOVERY_HOLD') {
-    const nextRound = currentRound + 1;
-    if (nextRound < config.rounds) {
-      return {
-        ...state,
-        currentRound: nextRound,
-        currentBreath: 1,
-        phase: 'BREATHING_INHALE',
-        secondsLeft: 0,
-      };
-    }
-    return { ...state, phase: 'ALL_COMPLETE' };
-  }
-
-  return state;
-}
+  | { type: 'SEGMENT'; phase: Phase; round: number; breath: number; seconds: number }
+  | { type: 'TICK'; seconds: number }
+  | { type: 'SET_PAUSED'; paused: boolean };
 
 function reducer(state: ExerciseState, action: Action): ExerciseState {
-  if (action.type === 'NEXT_PHASE') return nextPhase(state);
+  if (action.type === 'SEGMENT') {
+    return {
+      ...state,
+      phase: action.phase,
+      currentRound: action.round,
+      currentBreath: action.breath,
+      seconds: action.seconds,
+    };
+  }
   if (action.type === 'TICK') {
-    if (state.secondsLeft <= 1) return nextPhase(state);
-    return { ...state, secondsLeft: state.secondsLeft - 1 };
+    return { ...state, seconds: action.seconds };
+  }
+  if (action.type === 'SET_PAUSED') {
+    return { ...state, paused: action.paused };
   }
   return state;
 }
@@ -66,78 +36,92 @@ function makeInitialState(config: ExerciseConfig): ExerciseState {
   return {
     config,
     currentRound: 0,
-    currentBreath: 1,
-    phase: 'BREATHING_INHALE',
-    secondsLeft: 0,
+    currentBreath: 0,
+    phase: config.prepSeconds > 0 ? 'PREPARE' : 'BREATHING_INHALE',
+    seconds: config.prepSeconds,
+    paused: false,
   };
+}
+
+const PHASE_BADGES: Record<Phase, string> = {
+  PREPARE: 'Prepare-se',
+  BREATHING_INHALE: 'Respirando',
+  BREATHING_EXHALE: 'Respirando',
+  APNEA: 'Apnéia',
+  RECOVERY_HOLD: 'Recuperação',
+  RECOVERY_RELEASE: 'Recuperação',
+  MEDITATION: 'Meditação',
+  ALL_COMPLETE: '',
+};
+
+/** Texto do botão "Voltar": na recuperação ele desfaz o fim da apneia. */
+const RESTART_LABELS: Partial<Record<Phase, string>> = {
+  RECOVERY_HOLD: 'Voltar para a apnéia',
+};
+const RESTART_LABEL_DEFAULT = 'Voltar ao início desta etapa';
+
+function formatSeconds(s: number) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return m > 0 ? `${m}:${sec.toString().padStart(2, '0')}` : `${sec}`;
 }
 
 interface Props {
   config: ExerciseConfig;
-  onComplete: (rounds: number, totalSeconds: number) => void;
+  onComplete: (result: SessionResult) => void;
 }
 
 export default function Exercise({ config, onComplete }: Props) {
   const [state, dispatch] = useReducer(reducer, config, makeInitialState);
   const [muted, setMutedState] = useState(false);
-  const startTimeRef = useRef(Date.now());
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const engineRef = useRef<BreathEngine | null>(null);
+  const onCompleteRef = useRef(onComplete);
 
-  const { phase, currentRound, currentBreath, secondsLeft } = state;
-
-  // Start / stop background audio
   useEffect(() => {
-    startBackground();
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  const { phase, currentRound, currentBreath, seconds, paused } = state;
+
+  useEffect(() => {
+    const engine = new BreathEngine(getAudioSink(), config);
+    engineRef.current = engine;
+    engine.onEvent((e: EngineEvent) => {
+      if (e.type === 'complete') {
+        onCompleteRef.current({
+          rounds: e.roundsCompleted,
+          totalSeconds: e.elapsedSeconds,
+          retentionSeconds: e.retentionSeconds,
+          meditationSeconds: e.meditationSeconds,
+          date: new Date().toISOString(),
+        });
+      } else if (e.type === 'segment') {
+        dispatch({ type: 'SEGMENT', phase: e.phase, round: e.round, breath: e.breath, seconds: e.seconds });
+      } else {
+        dispatch({ type: 'TICK', seconds: e.seconds });
+      }
+    });
+    // O SO pode suspender o AudioContext (ex.: tela bloqueada); como todo o
+    // relógio da sessão vive nele, tratamos como pausa e pedimos um toque
+    // para retomar (o gesto é exigido pelo navegador para religar o áudio).
+    const unsubscribe = onAudioStateChange((audioState) => {
+      if (audioState === 'suspended' && !engine.isPaused()) {
+        void engine.pause();
+        dispatch({ type: 'SET_PAUSED', paused: true });
+      }
+    });
+    startBackground(config.soundscape, config.binaural);
+    engine.start();
+    void acquireWakeLock();
+
     return () => {
+      unsubscribe();
+      engine.stop();
       stopBackground();
-      stopBreathTone();
+      releaseWakeLock();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Play breath tone on each phase change
-  useEffect(() => {
-    if (phase === 'BREATHING_INHALE') {
-      playBreathTone('inhale');
-    } else if (phase === 'BREATHING_EXHALE') {
-      playBreathTone('exhale');
-    } else {
-      stopBreathTone();
-    }
-  }, [phase, currentBreath]);
-
-  // Phase transition timers
-  useEffect(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-
-    if (phase === 'ALL_COMPLETE') {
-      const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
-      onComplete(config.rounds, elapsed);
-      return;
-    }
-
-    if (phase === 'BREATHING_INHALE') {
-      timerRef.current = setTimeout(() => dispatch({ type: 'NEXT_PHASE' }), INHALE_MS);
-    } else if (phase === 'BREATHING_EXHALE') {
-      timerRef.current = setTimeout(() => dispatch({ type: 'NEXT_PHASE' }), EXHALE_MS);
-    }
-
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [phase, currentBreath, currentRound]);
-
-  // Countdown tick for apnea and recovery
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-
-    if (phase === 'APNEA' || phase === 'RECOVERY_HOLD') {
-      interval = setInterval(() => dispatch({ type: 'TICK' }), 1000);
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [phase]);
 
   function toggleMute() {
     const next = !muted;
@@ -145,19 +129,47 @@ export default function Exercise({ config, onComplete }: Props) {
     setMuted(next);
   }
 
-  const phaseLabel =
-    phase === 'APNEA'
-      ? 'Apnéia'
-      : phase === 'RECOVERY_HOLD'
-      ? 'Recuperação'
-      : 'Respirando';
+  function handlePauseToggle() {
+    const engine = engineRef.current;
+    if (!engine) return;
+    if (paused) {
+      void engine.resume();
+      dispatch({ type: 'SET_PAUSED', paused: false });
+    } else {
+      void engine.pause();
+      dispatch({ type: 'SET_PAUSED', paused: true });
+    }
+  }
+
+  function handleFinishEarly() {
+    const engine = engineRef.current;
+    if (!engine) return;
+    // finishEarly emite 'complete', que leva à tela de resumo.
+    void engine.resume();
+    engine.finishEarly();
+  }
+
+  function handleRestartPhase() {
+    const engine = engineRef.current;
+    if (!engine) return;
+    void engine.resume();
+    engine.restartCurrentPhase();
+    dispatch({ type: 'SET_PAUSED', paused: false });
+  }
+
+  const showBreatheButton = phase === 'APNEA' && config.retentionMode === 'countup';
+  const showFinishMeditation =
+    phase === 'MEDITATION' && config.meditationSeconds === UNLIMITED_MEDITATION;
 
   return (
     <div className="exercise-page">
       <header className="exercise-header">
         <RoundProgress currentRound={currentRound} totalRounds={config.rounds} />
         <div className="header-right">
-          <span className="phase-badge">{phaseLabel}</span>
+          <span className="phase-badge">{PHASE_BADGES[phase]}</span>
+          <button className="mute-btn" onClick={handlePauseToggle} title={paused ? 'Continuar' : 'Pausar'}>
+            {paused ? <IconPlay /> : <IconPause />}
+          </button>
           <button className="mute-btn" onClick={toggleMute} title={muted ? 'Ativar som' : 'Silenciar'}>
             {muted ? <IconMuted /> : <IconSound />}
           </button>
@@ -165,13 +177,54 @@ export default function Exercise({ config, onComplete }: Props) {
       </header>
 
       <main className="exercise-main">
-        <BreathingCircle
-          phase={phase}
-          breathCount={currentBreath}
-          totalBreaths={config.breathsPerRound}
-          secondsLeft={secondsLeft}
-        />
+        {showBreatheButton ? (
+          // Círculo grande e central: toca em qualquer ponto dele, sem precisar mirar.
+          <button
+            className={`breathe-giant-circle${paused ? ' paused' : ''}`}
+            onClick={() => engineRef.current?.endRetentionNow()}
+            disabled={paused}
+          >
+            <span className="breathe-giant-label">Apnéia</span>
+            <span className="breathe-giant-timer">{formatSeconds(seconds)}</span>
+            <span className="breathe-giant-hint">Toque para respirar</span>
+          </button>
+        ) : (
+          <BreathingCircle
+            phase={phase}
+            breathCount={currentBreath}
+            totalBreaths={config.breathsPerRound}
+            seconds={seconds}
+            breathPaceMs={config.breathPaceMs}
+            paused={paused}
+          />
+        )}
+        {/* Altura reservada: o botão aparece sem deslocar o círculo */}
+        <div className="action-slot">
+          {showFinishMeditation && !paused && (
+            <button className="breathe-btn" onClick={handleFinishEarly}>
+              Concluir
+            </button>
+          )}
+        </div>
       </main>
+
+      {paused && (
+        <div className="pause-overlay">
+          <div className="pause-card">
+            <h2 className="pause-title">Pausado</h2>
+            <button className="breathe-btn" onClick={handlePauseToggle}>
+              Continuar
+            </button>
+            <button className="restart-btn-secondary" onClick={handleRestartPhase}>
+              <IconUndo />
+              {RESTART_LABELS[phase] ?? RESTART_LABEL_DEFAULT}
+            </button>
+            <button className="finish-btn" onClick={handleFinishEarly}>
+              Encerrar exercício
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -182,6 +235,32 @@ function IconSound() {
       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />
       <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
       <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    </svg>
+  );
+}
+
+function IconPause() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+      <rect x="6" y="4" width="4" height="16" rx="1.5" />
+      <rect x="14" y="4" width="4" height="16" rx="1.5" />
+    </svg>
+  );
+}
+
+function IconPlay() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+      <path d="M8 5.14v13.72c0 .93 1.03 1.5 1.82.99l10.4-6.86c.7-.46.7-1.52 0-1.98L9.82 4.15C9.03 3.64 8 4.2 8 5.14z" />
+    </svg>
+  );
+}
+
+function IconUndo() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 7v6h6" />
+      <path d="M3.51 13a9 9 0 1 0 2.13-9.36L3 7" />
     </svg>
   );
 }
