@@ -21,6 +21,9 @@ const baseConfig: ExerciseConfig = {
   prepSeconds: 5,
   soundscape: 'breeze',
   binaural: false,
+  ambienceVolume: 0.7,
+  haptics: false,
+  countdownCues: true,
 };
 
 describe('buildTimeline (countdown)', () => {

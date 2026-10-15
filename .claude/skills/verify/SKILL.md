@@ -24,25 +24,30 @@ chromium.launch({ executablePath: '/opt/pw-browsers/chromium',
 ```
 
 Useful selectors:
-- Setup: `.form-card` (per control, filter by label text), `.stepper-btn`,
-  `input[type="range"]` (index 0 = breaths, 1 = pace), `.mode-btn`
-  (Cronômetro/Livre), `.start-btn`.
+- Setup: `.preset-chip`, `.form-card` (per control, filter by label text),
+  `.stepper-btn`, `input[type="range"]` (#breaths, #pace, #volume),
+  `.mode-btn` (Cronômetro/Livre; also `.sound-btn` soundscapes), `.start-btn`.
 - Exercise: `.breathing-circle[data-phase="..."]` (PREPARE,
   BREATHING_INHALE, BREATHING_EXHALE, APNEA, RECOVERY_HOLD, MEDITATION),
   `.breath-counter`, `.timer-display`, `.phase-badge`,
-  `button[title="Pausar"]`, `.breathe-btn` (count-up retention),
-  `.pause-overlay`, `.finish-btn`.
-- Complete: `.complete-page`, `.complete-stats`, `.retention-row`.
+  `.orb-ring-progress`, `button[title="Pausar"]`, `.breathe-giant-circle`
+  (count-up retention; Space/Enter also works), `.pause-overlay`,
+  `.finish-btn`.
+- Complete: `.complete-page`, `.complete-stats`, `.retention-row`,
+  `.restart-btn` (repeat), `.home-btn`.
 
 ## Gotchas
 
 - React range sliders need the native-setter trick (set value via
   `Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set`
   then dispatch `input`), not `fill()`.
-- The UI clamps breaths to ≥30, so the shortest real round is ~90s at the
+- The UI clamps breaths to ≥20, so the shortest real round is ~60s at the
   1.5s pace. For fast runs, seed `localStorage['breathing.config.v1']`
   with e.g. `breathsPerRound: 2, prepSeconds: 2` before reload —
   `loadConfig()` accepts values outside the UI ranges.
 - Session history lives in `localStorage['breathing.history.v1']`.
 - Sync check: at pace 1.5s the breath counter must advance exactly every
   3.0s with no cumulative drift over a round (30 breaths = 90.0s).
+- Audio levels: wrap `AudioNode.prototype.connect` in an init script to tap
+  an `AnalyserNode` before `ctx.destination` and measure RMS/peak per
+  soundscape (hold phase ≈ -30 to -35 dB, peaks < 0.8).

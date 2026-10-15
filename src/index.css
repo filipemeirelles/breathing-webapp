@@ -1,16 +1,55 @@
+/* Cor da fase atual, interpolável (fundo e anel trocam de cor suavemente). */
+@property --glow {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #7eb8f7;
+}
+
+@property --glow2 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #b4a7e8;
+}
+
 :root {
-  --bg: #f0f4ff;
-  --surface: #ffffff;
+  color-scheme: dark;
+
+  /* Fundo noturno */
+  --bg: #0b1022;
+  --bg-2: #121a36;
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-2: rgba(255, 255, 255, 0.08);
+  --surface-solid: #161e3d;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  /* Texto */
+  --text: #eef0ff;
+  --text-muted: #a2abd0;
+  --text-dim: #6f78a3;
+
+  /* Marca: o azul e o lavanda originais */
   --accent: #7eb8f7;
   --accent2: #b4a7e8;
-  --accent-dark: #5a9de0;
-  --text: #3a3a5c;
-  --text-muted: #8888aa;
-  --border: #dde3f5;
-  --shadow: 0 4px 24px rgba(120, 130, 200, 0.12);
-  --shadow-lg: 0 8px 40px rgba(120, 130, 200, 0.2);
-  --radius: 16px;
-  --radius-sm: 10px;
+  --accent-ink: #0b1022;
+
+  /* Cores por fase */
+  --c-breath: #7eb8f7;
+  --c-breath2: #b4a7e8;
+  --c-hold: #9b8cf0;
+  --c-hold2: #5d4fc4;
+  --c-recover: #f4c27f;
+  --c-recover2: #e48f6b;
+  --c-meditate: #7fd6c4;
+  --c-meditate2: #5b8de0;
+
+  --radius: 22px;
+  --radius-sm: 14px;
+  --shadow: 0 10px 40px rgba(2, 4, 20, 0.45);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 *, *::before, *::after {
@@ -23,11 +62,17 @@ html, body, #root {
   height: 100%;
 }
 
+html {
+  background: var(--bg);
+}
+
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
 
 #root {
@@ -38,11 +83,213 @@ body {
 
 button {
   font-family: inherit;
+  color: inherit;
   cursor: pointer;
   border: none;
-  outline: none;
+  background: none;
+  touch-action: manipulation;
 }
 
-input[type="range"] {
-  accent-color: var(--accent);
+button:focus-visible,
+input:focus-visible + .switch-track,
+input[type="range"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Fundo vivo: duas manchas de luz na cor da fase, atrás de tudo */
+.sky {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 80% at 50% 120%, color-mix(in srgb, var(--glow2) 22%, transparent), transparent 60%),
+    radial-gradient(90% 60% at 50% -10%, color-mix(in srgb, var(--glow) 16%, transparent), transparent 65%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+  transition: --glow 2.4s ease, --glow2 2.4s ease;
+}
+
+.sky::before,
+.sky::after {
+  content: '';
+  position: absolute;
+  width: 70vmax;
+  height: 70vmax;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.16;
+  animation: drift 38s ease-in-out infinite alternate;
+}
+
+.sky::before {
+  background: var(--glow);
+  top: -30vmax;
+  left: -25vmax;
+}
+
+.sky::after {
+  background: var(--glow2);
+  bottom: -35vmax;
+  right: -30vmax;
+  animation-duration: 46s;
+  animation-direction: alternate-reverse;
+}
+
+@keyframes drift {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(8vmax, 6vmax) scale(1.15); }
+}
+
+/* Utilitário: texto só para leitores de tela */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Componentes compartilhados entre telas */
+.btn-primary {
+  min-height: 56px;
+  padding: 0 32px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: var(--accent-ink);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: 0 8px 30px color-mix(in srgb, var(--accent) 35%, transparent);
+  transition: transform 0.2s var(--ease-out), box-shadow 0.2s, filter 0.2s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+}
+
+.btn-ghost {
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+
+.btn-ghost:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+  background: var(--surface);
+}
+
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: color 0.2s, background 0.2s;
+  flex-shrink: 0;
+}
+
+.icon-btn:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+/* Range slider estilizado */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 28px;
+  background: transparent;
+  cursor: pointer;
+  --fill: 50%;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent) 0 var(--fill), var(--surface-2) var(--fill) 100%);
+}
+
+.slider::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent) 0 var(--fill), var(--surface-2) var(--fill) 100%);
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sky::before,
+  .sky::after {
+    animation: none;
+  }
+}
+
+/* Tom de cor por fase (definido pelo exercício em <html data-tone>) */
+:root {
+  transition: --glow 2.4s ease, --glow2 2.4s ease;
+  --glow: var(--c-breath);
+  --glow2: var(--c-breath2);
+}
+
+:root[data-tone="hold"] {
+  --glow: var(--c-hold);
+  --glow2: var(--c-hold2);
+}
+
+:root[data-tone="recover"] {
+  --glow: var(--c-recover);
+  --glow2: var(--c-recover2);
+}
+
+:root[data-tone="meditate"] {
+  --glow: var(--c-meditate);
+  --glow2: var(--c-meditate2);
 }

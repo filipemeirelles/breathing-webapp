@@ -8,7 +8,7 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
   },
   android: {
-    backgroundColor: '#f0f4ff',
+    backgroundColor: '#0b1022',
   },
 };
 
