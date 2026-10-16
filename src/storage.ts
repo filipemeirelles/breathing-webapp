@@ -1,4 +1,4 @@
-import type { ExerciseConfig, SessionResult, Soundscape } from './types';
+import type { ExerciseConfig, SessionResult, Soundscape, VoiceMode } from './types';
 import { DEFAULT_CONFIG } from './types';
 
 const CONFIG_KEY = 'breathing.config.v1';
@@ -6,6 +6,7 @@ const HISTORY_KEY = 'breathing.history.v1';
 const HISTORY_LIMIT = 100;
 
 const SOUNDSCAPES: Soundscape[] = ['breeze', 'ocean', 'rain', 'drone', 'none'];
+const VOICE_MODES: VoiceMode[] = ['always', 'intro', 'off'];
 
 function num(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -26,6 +27,7 @@ export function loadConfig(): ExerciseConfig {
     cfg.rounds = Math.max(1, Math.round(num(cfg.rounds, DEFAULT_CONFIG.rounds)));
     cfg.ambienceVolume = Math.max(0, Math.min(1, num(cfg.ambienceVolume, DEFAULT_CONFIG.ambienceVolume)));
     if (!SOUNDSCAPES.includes(cfg.soundscape)) cfg.soundscape = DEFAULT_CONFIG.soundscape;
+    if (!VOICE_MODES.includes(cfg.voice)) cfg.voice = DEFAULT_CONFIG.voice;
     return cfg;
   } catch {
     return DEFAULT_CONFIG;

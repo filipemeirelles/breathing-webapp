@@ -21,6 +21,8 @@ npm run android:sync && npm run android:open   # app Android
   respirações (20–60), ritmo, retenção por round, recuperação e meditação.
 - **Duração estimada** da sessão calculada pela própria timeline do motor.
 - **Retenção cronometrada ou livre** (toque no orbe, Espaço ou Enter para respirar).
+- **Voz guiada** em português do Brasil ("Inspira" / "Expira"): sempre, só no início de cada round, ou desligada.
+- **Sopros de respiração gravados** (inspiração de 2, 3 e 4 s, expiração de 2 e 3 s, recuperação), escolhidos pelo ritmo; fora do alcance, cai na expiração sintetizada. Origem e licença em `docs/audio.md`.
 - **Paisagens sonoras** sintetizadas: Brisa, Oceano, Chuva, Ressonância
   (tigela tibetana) ou Silêncio, com prévia, volume e batidas binaurais.
 - **Contagem sonora** nos 3 últimos segundos e **vibração** nas trocas de fase.
@@ -36,7 +38,9 @@ npm run android:sync && npm run android:open   # app Android
 - `src/engine/breathEngine.ts` — agenda o áudio com lookahead e dispara as
   fases da UI pelo mesmo relógio; pausar = suspender o `AudioContext`.
 - `src/audio.ts` — grafo Web Audio: barramentos de guia e de fundo, reverb
-  por convolução, limitador, ruídos coloridos com loop sem clique.
+  por convolução, limitador, ruídos coloridos com loop sem clique; toca os
+  clipes gravados (`src/clips.ts` escolhe o clipe e o `playbackRate`) e a voz,
+  que abaixa o sopro em 6 dB enquanto fala.
 - `src/pages/*` — Setup, Exercise, Complete. Tema noturno com a cor do
   fundo/orbe acompanhando a fase (`<html data-tone>`).
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import type { ExerciseConfig, RetentionMode, Soundscape } from '../types';
+import type { ExerciseConfig, RetentionMode, Soundscape, VoiceMode } from '../types';
 import { UNLIMITED_MEDITATION } from '../types';
 import { initAudio, previewSoundscape, stopPreview } from '../audio';
 import { computeStats, loadConfig, loadHistory, saveConfig } from '../storage';
@@ -30,6 +30,12 @@ const SOUNDSCAPES: { value: Soundscape; label: string }[] = [
   { value: 'rain', label: 'Chuva' },
   { value: 'drone', label: 'Ressonância' },
   { value: 'none', label: 'Silêncio' },
+];
+
+const VOICE_MODES: { value: VoiceMode; label: string; hint: string }[] = [
+  { value: 'always', label: 'Sempre', hint: 'Diz "Inspira" e "Expira" em toda respiração' },
+  { value: 'intro', label: 'No início', hint: 'Fala nas 5 primeiras respirações de cada round e depois silencia' },
+  { value: 'off', label: 'Desligada', hint: 'Sem locução; só os sons de respiração' },
 ];
 
 interface Preset {
@@ -137,6 +143,7 @@ export default function Setup({ onStart }: Props) {
   const [binaural, setBinaural] = useState(base.binaural);
   const [haptics, setHaptics] = useState(base.haptics);
   const [countdownCues, setCountdownCues] = useState(base.countdownCues);
+  const [voice, setVoice] = useState<VoiceMode>(base.voice);
   const [loading, setLoading] = useState(false);
 
   const canVibrate = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
@@ -155,6 +162,7 @@ export default function Setup({ onStart }: Props) {
     ambienceVolume,
     haptics,
     countdownCues,
+    voice,
   };
 
   const activePreset = PRESETS.find((p) => presetMatches(p, config))?.id ?? null;
@@ -423,6 +431,25 @@ export default function Setup({ onStart }: Props) {
                 />
               </>
             )}
+          </div>
+
+          <div className="form-card">
+            <div className="form-label">Voz guiada</div>
+            <div className="mode-toggle" role="radiogroup" aria-label="Voz guiada">
+              {VOICE_MODES.map((m) => (
+                <button
+                  key={m.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={voice === m.value}
+                  className={`mode-btn${voice === m.value ? ' active' : ''}`}
+                  onClick={() => setVoice(m.value)}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <p className="form-hint">{VOICE_MODES.find((m) => m.value === voice)?.hint}</p>
           </div>
 
           <div className="form-card switch-list">

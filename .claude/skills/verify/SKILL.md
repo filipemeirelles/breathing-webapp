@@ -51,3 +51,7 @@ Useful selectors:
 - Audio levels: wrap `AudioNode.prototype.connect` in an init script to tap
   an `AnalyserNode` before `ctx.destination` and measure RMS/peak per
   soundscape (hold phase ≈ -30 to -35 dB, peaks < 0.8).
+- Voice/clips: patch `AudioBufferSourceNode.prototype.start` in an init
+  script to log `{buffer.duration, playbackRate}` per start; at pace 4000 ms
+  the exhale must fall back to the synth (no clip logged). Voice cues and
+  clips live in `public/audio/` (see docs/audio.md).

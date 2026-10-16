@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExerciseConfig } from '../types';
 import { DEFAULT_CONFIG } from '../types';
-import { BreathEngine, type AudioSink, type EngineEvent } from './breathEngine';
+import { BreathEngine, type AudioSink, type EngineEvent, type VoiceCue } from './breathEngine';
 
 /** Relógio de áudio falso: o teste avança `t` e chama o agendador à mão. */
 function makeSink() {
-  const calls: { kind: string; at: number; final?: boolean }[] = [];
+  const calls: { kind: string; at: number; final?: boolean; cue?: VoiceCue }[] = [];
   let t = 0;
   const sink: AudioSink = {
     now: () => t,
     scheduleBreath: (type, at) => calls.push({ kind: type, at }),
+    scheduleVoice: (cue, at) => calls.push({ kind: 'voice', at, cue }),
     scheduleGong: (at) => calls.push({ kind: 'gong', at }),
     scheduleChime: (at) => calls.push({ kind: 'chime', at }),
     scheduleTick: (at, final) => calls.push({ kind: 'tick', at, final }),
@@ -56,6 +57,41 @@ function runTo(engine: BreathEngine, setTime: (v: number) => void, end: number) 
     (engine as unknown as { advance(n: number): void }).advance(t);
   }
 }
+
+describe('BreathEngine voice guide', () => {
+  const voiceConfig: ExerciseConfig = { ...config, breathsPerRound: 8, voice: 'always' };
+
+  function cues(cfg: ExerciseConfig) {
+    const { sink, calls, setTime } = makeSink();
+    const engine = new BreathEngine(sink, cfg);
+    engine.start();
+    runTo(engine, setTime, 60);
+    return calls.filter((c) => c.kind === 'voice').map((c) => c.cue);
+  }
+
+  it("speaks 'inhale'/'exhale' on every breath in always mode", () => {
+    const all = cues(voiceConfig);
+    expect(all.filter((c) => c === 'inhale')).toHaveLength(8);
+    expect(all.filter((c) => c === 'exhale')).toHaveLength(8);
+    // Fases de retenção e recuperação também têm locução
+    expect(all).toContain('hold');
+    expect(all).toContain('deep');
+    expect(all).toContain('release');
+    // A voz fala no início da fase: inspira, expira, inspira...
+    expect(all.slice(0, 4)).toEqual(['inhale', 'exhale', 'inhale', 'exhale']);
+  });
+
+  it('speaks only on the first breaths of each round in intro mode', () => {
+    const intro = cues({ ...voiceConfig, voice: 'intro' });
+    expect(intro.filter((c) => c === 'inhale')).toHaveLength(5);
+    expect(intro.filter((c) => c === 'exhale')).toHaveLength(5);
+    expect(intro).toContain('hold');
+  });
+
+  it('is silent when the voice is off', () => {
+    expect(cues({ ...voiceConfig, voice: 'off' })).toHaveLength(0);
+  });
+});
 
 describe('BreathEngine countdown cues', () => {
   it('schedules 3 ticks before the end of apnea and recovery, last one final', () => {

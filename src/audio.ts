@@ -1,4 +1,5 @@
-import type { AudioSink } from './engine/breathEngine';
+import type { AudioSink, VoiceCue } from './engine/breathEngine';
+import { pickClip } from './clips';
 import type { Soundscape } from './types';
 
 /**
@@ -9,7 +10,8 @@ import type { Soundscape } from './types';
  *               └─► reverb ───┼─► master (mute) ─► limiter ─► saída
  *   paisagem/binaural ─► ambienceBus (volume do fundo) ─┘
  *
- * Tudo é sintetizado aqui, exceto a inspiração (gravação real). As
+ * Sintetizado aqui: fundo, sinos e a expiração de reserva. Gravados (em
+ * public/audio): sopros de respiração e locuções. As
  * paisagens não usam timers: só LFOs e loops, então suspender o
  * AudioContext (pausa) congela o som inteiro de forma atômica.
  */
@@ -23,6 +25,20 @@ let ambienceBus: GainNode | null = null;
 let reverbSend: GainNode | null = null;
 
 let inhaleBuffer: AudioBuffer | null = null;
+/** Sopros e locuções gravados, por nome de arquivo (sem extensão). */
+const clipBuffers = new Map<string, AudioBuffer>();
+
+const INHALE_CLIPS = ['breath-inhale-2s', 'breath-inhale-3s', 'breath-inhale-4s'];
+const EXHALE_CLIPS = ['breath-exhale-2s', 'breath-exhale-3s'];
+const RECOVERY_CLIP = 'breath-recovery';
+const VOICE_FILES: Record<VoiceCue, string> = {
+  inhale: 'voice-inhale',
+  exhale: 'voice-exhale',
+  hold: 'voice-hold',
+  deep: 'voice-deep',
+  release: 'voice-release',
+  prepare: 'voice-prepare',
+};
 const noiseCache = new Map<NoiseKind, AudioBuffer>();
 
 // Camadas da paisagem ativa (fontes + ganhos controlados por setAmbience)
@@ -40,6 +56,13 @@ let binauralGain: GainNode | null = null;
 const scheduledSources = new Map<AudioScheduledSourceNode, number>();
 
 const BREATH_GAIN = 0.85;
+/** Os clipes gravados vêm normalizados a −20 LUFS; o sopro fica um pouco abaixo da voz. */
+const CLIP_BREATH_GAIN = 0.8;
+const VOICE_GAIN = 0.9;
+/** Enquanto a voz fala junto, o sopro recua (−6 dB) para a palavra não ser encoberta. */
+const VOICE_DUCK = 0.5;
+/** Instante da última locução agendada: o sopro que começa junto com ela abaixa. */
+let lastVoiceTime = -1;
 /** playbackRate fora desta faixa soa artificial; além dela o som só termina antes. */
 const MIN_RATE = 0.6;
 const MAX_RATE = 1.4;
@@ -231,7 +254,23 @@ async function loadBuffer(url: string): Promise<AudioBuffer> {
 export async function initAudio() {
   const c = getCtx();
   await c.resume();
-  if (!inhaleBuffer) inhaleBuffer = await loadBuffer(`${import.meta.env.BASE_URL}inhale.ogg`);
+  const base = import.meta.env.BASE_URL;
+  const names = [...INHALE_CLIPS, ...EXHALE_CLIPS, RECOVERY_CLIP, ...Object.values(VOICE_FILES)];
+  const pending = names.filter((n) => !clipBuffers.has(n));
+  // Cada arquivo é opcional: se faltar (ou a rede falhar) o motor cai nos
+  // sons sintetizados e a sessão segue.
+  await Promise.allSettled(
+    pending.map(async (name) => {
+      clipBuffers.set(name, await loadBuffer(`${base}audio/${name}.mp3`));
+    }),
+  );
+  if (!inhaleBuffer) {
+    try {
+      inhaleBuffer = await loadBuffer(`${base}inhale.ogg`);
+    } catch {
+      inhaleBuffer = null;
+    }
+  }
 }
 
 export function setMuted(muted: boolean) {
@@ -463,8 +502,9 @@ function setAmbience(mode: AmbienceMode, atTime: number) {
  * Inspiração: gravação real esticada/comprimida via playbackRate (limitado)
  * com envelope que termina exatamente no fim da fase.
  */
-function scheduleInhale(atTime: number, durationSec: number) {
+function scheduleInhale(atTime: number, durationSec: number, level = 1) {
   const c = getCtx();
+  if (scheduleClipBreath(INHALE_CLIPS, atTime, durationSec, level)) return;
   if (!inhaleBuffer) return;
 
   const t = Math.max(atTime, c.currentTime);
@@ -479,8 +519,8 @@ function scheduleInhale(atTime: number, durationSec: number) {
 
   const gain = c.createGain();
   gain.gain.setValueAtTime(0, t);
-  gain.gain.linearRampToValueAtTime(BREATH_GAIN, t + 0.04);
-  gain.gain.setValueAtTime(BREATH_GAIN, Math.max(t + 0.04, end - 0.18));
+  gain.gain.linearRampToValueAtTime(BREATH_GAIN * level, t + 0.04);
+  gain.gain.setValueAtTime(BREATH_GAIN * level, Math.max(t + 0.04, end - 0.18));
   gain.gain.linearRampToValueAtTime(0.0001, end);
 
   chain(source, warm, gain, getGuide());
@@ -494,7 +534,7 @@ function scheduleInhale(atTime: number, durationSec: number) {
  * ao longo da fase. Escala a qualquer ritmo sem os artefatos de esticar
  * uma gravação.
  */
-function scheduleSynthExhale(atTime: number, durationSec: number) {
+function scheduleSynthExhale(atTime: number, durationSec: number, level = 1) {
   const c = getCtx();
   const t = Math.max(atTime, c.currentTime);
   const end = t + durationSec;
@@ -519,7 +559,7 @@ function scheduleSynthExhale(atTime: number, durationSec: number) {
   formant.frequency.exponentialRampToValueAtTime(440, end);
 
   const gain = c.createGain();
-  const peak = 1.1;
+  const peak = 1.1 * level;
   const attack = Math.min(0.3, durationSec * 0.14);
   gain.gain.setValueAtTime(0, t);
   gain.gain.linearRampToValueAtTime(peak, t + attack);
@@ -533,9 +573,50 @@ function scheduleSynthExhale(atTime: number, durationSec: number) {
   track(source, t);
 }
 
-function scheduleBreath(type: 'inhale' | 'exhale', atTime: number, durationSec: number) {
-  if (type === 'inhale') scheduleInhale(atTime, durationSec);
-  else scheduleSynthExhale(atTime, durationSec);
+/** Toca um clipe gravado esticado para terminar junto com a fase. */
+function playClip(key: string, rate: number, atTime: number, gainValue: number): boolean {
+  const buffer = clipBuffers.get(key);
+  if (!buffer) return false;
+  const c = getCtx();
+  const t = Math.max(atTime, c.currentTime);
+  const source = c.createBufferSource();
+  source.buffer = buffer;
+  source.playbackRate.value = rate;
+  const gain = c.createGain();
+  gain.gain.value = gainValue;
+  chain(source, gain, getGuide());
+  source.start(t);
+  source.stop(t + buffer.duration / rate + 0.05);
+  track(source, t);
+  return true;
+}
+
+/** Escolhe, entre `keys`, o clipe carregado mais próximo da duração pedida. */
+function scheduleClipBreath(keys: string[], atTime: number, durationSec: number, level = 1): boolean {
+  const loaded = keys
+    .filter((k) => clipBuffers.has(k))
+    .map((k) => ({ key: k, duration: clipBuffers.get(k)!.duration }));
+  const choice = pickClip(loaded, durationSec);
+  return choice ? playClip(choice.key, choice.rate, atTime, CLIP_BREATH_GAIN * level) : false;
+}
+
+function scheduleBreath(type: 'inhale' | 'exhale' | 'recovery', atTime: number, durationSec: number) {
+  const level = Math.abs(atTime - lastVoiceTime) < 0.02 ? VOICE_DUCK : 1;
+  if (type === 'recovery') {
+    const clip = clipBuffers.get(RECOVERY_CLIP);
+    const choice = clip ? pickClip([{ key: RECOVERY_CLIP, duration: clip.duration }], durationSec) : null;
+    if (choice && playClip(choice.key, choice.rate, atTime, CLIP_BREATH_GAIN * level)) return;
+    scheduleInhale(atTime, durationSec, level);
+  } else if (type === 'inhale') {
+    scheduleInhale(atTime, durationSec, level);
+  } else if (!scheduleClipBreath(EXHALE_CLIPS, atTime, durationSec, level)) {
+    scheduleSynthExhale(atTime, durationSec, level);
+  }
+}
+
+/** Locução no instante pedido, sem esticar (é fala). Sem arquivo, não toca. */
+function scheduleVoice(cue: VoiceCue, atTime: number) {
+  if (playClip(VOICE_FILES[cue], 1, atTime, VOICE_GAIN)) lastVoiceTime = atTime;
 }
 
 interface BellPartial {
@@ -669,6 +750,7 @@ export function getAudioSink(): AudioSink {
   return {
     now: () => c.currentTime,
     scheduleBreath,
+    scheduleVoice,
     scheduleGong,
     scheduleChime,
     scheduleTick,

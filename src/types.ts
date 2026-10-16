@@ -1,5 +1,7 @@
 export type RetentionMode = 'countdown' | 'countup';
 export type Soundscape = 'breeze' | 'ocean' | 'rain' | 'drone' | 'none';
+/** Voz guiada: em toda respiração, só nas primeiras de cada round, ou desligada. */
+export type VoiceMode = 'always' | 'intro' | 'off';
 
 /** Sentinela de meditationSeconds: medita até o usuário tocar em "Concluir". */
 export const UNLIMITED_MEDITATION = -1;
@@ -25,6 +27,8 @@ export interface ExerciseConfig {
   haptics: boolean;
   /** Bipes suaves nos últimos 3s de apnéia, recuperação e preparo. */
   countdownCues: boolean;
+  /** Locução "Inspira" / "Expira" e avisos de fase. */
+  voice: VoiceMode;
 }
 
 export const DEFAULT_CONFIG: ExerciseConfig = {
@@ -41,6 +45,7 @@ export const DEFAULT_CONFIG: ExerciseConfig = {
   ambienceVolume: 0.7,
   haptics: true,
   countdownCues: true,
+  voice: 'always',
 };
 
 export type Phase =
