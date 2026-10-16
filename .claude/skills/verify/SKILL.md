@@ -55,3 +55,7 @@ Useful selectors:
   script to log `{buffer.duration, playbackRate}` per start; at pace 4000 ms
   the exhale must fall back to the synth (no clip logged). Voice cues and
   clips live in `public/audio/` (see docs/audio.md).
+- Gong level: sample the analyser every 250 ms from RECOVERY_RELEASE on
+  (not from MEDITATION, which misses the attack). Targets: opening gong
+  ≈ -20 dB RMS, closing gong ≈ -23 dB, i.e. just below the breath guide
+  (≈ -19.6 dB). Constants: GONG_LEVEL / GONG_CLOSING_FACTOR in src/audio.ts.

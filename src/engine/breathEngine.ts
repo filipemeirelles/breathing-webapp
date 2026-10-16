@@ -24,7 +24,8 @@ export interface AudioSink {
   scheduleBreath(type: 'inhale' | 'exhale' | 'recovery', atTime: number, durationSec: number): void;
   /** Locução ("Inspira", "Expira"...) tocando no instante `atTime`. */
   scheduleVoice(cue: VoiceCue, atTime: number): void;
-  scheduleGong(atTime: number): void;
+  /** `closing` = gongo de encerramento, mais suave que o de abertura. */
+  scheduleGong(atTime: number, closing?: boolean): void;
   scheduleChime(atTime: number): void;
   /** Bipe curto de contagem regressiva; `final` marca o último segundo. */
   scheduleTick(atTime: number, final: boolean): void;
@@ -373,7 +374,7 @@ export class BreathEngine {
       case 'MEDITATION':
         this.sink.scheduleGong(seg.start);
         this.sink.setAmbience('meditation', seg.start);
-        if (Number.isFinite(seg.end)) this.sink.scheduleGong(seg.end);
+        if (Number.isFinite(seg.end)) this.sink.scheduleGong(seg.end, true);
         break;
       default:
         break;

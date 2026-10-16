@@ -657,14 +657,22 @@ function strike(atTime: number, fundamental: number, partials: BellPartial[], le
   }
 }
 
+/**
+ * Nível do gongo. O gongo é um acento, não pode ser o som mais forte do app:
+ * medido a −11,8 dB RMS (8 dB acima do resto) com o nível antigo de 0,6.
+ * O de encerramento é mais suave, pois toca depois de minutos de silêncio.
+ */
+const GONG_LEVEL = 0.2;
+const GONG_CLOSING_FACTOR = 0.7;
+
 /** Gongo/tigela grave para abrir e fechar a meditação. */
-function scheduleGong(atTime: number) {
+function scheduleGong(atTime: number, closing = false) {
   strike(atTime, 110, [
     { ratio: 1, gain: 0.55, decay: 9 },
     { ratio: 2.76, gain: 0.22, decay: 6 },
     { ratio: 5.4, gain: 0.09, decay: 3.5 },
     { ratio: 8.93, gain: 0.04, decay: 2 },
-  ], 0.6, 0.8);
+  ], closing ? GONG_LEVEL * GONG_CLOSING_FACTOR : GONG_LEVEL, 0.8);
 }
 
 /** Sino curto e cristalino para marcar transições. */

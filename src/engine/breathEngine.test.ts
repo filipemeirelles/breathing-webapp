@@ -5,13 +5,13 @@ import { BreathEngine, type AudioSink, type EngineEvent, type VoiceCue } from '.
 
 /** Relógio de áudio falso: o teste avança `t` e chama o agendador à mão. */
 function makeSink() {
-  const calls: { kind: string; at: number; final?: boolean; cue?: VoiceCue }[] = [];
+  const calls: { kind: string; at: number; final?: boolean; cue?: VoiceCue; closing?: boolean }[] = [];
   let t = 0;
   const sink: AudioSink = {
     now: () => t,
     scheduleBreath: (type, at) => calls.push({ kind: type, at }),
     scheduleVoice: (cue, at) => calls.push({ kind: 'voice', at, cue }),
-    scheduleGong: (at) => calls.push({ kind: 'gong', at }),
+    scheduleGong: (at, closing) => calls.push({ kind: 'gong', at, closing }),
     scheduleChime: (at) => calls.push({ kind: 'chime', at }),
     scheduleTick: (at, final) => calls.push({ kind: 'tick', at, final }),
     setAmbience: () => undefined,
@@ -90,6 +90,20 @@ describe('BreathEngine voice guide', () => {
 
   it('is silent when the voice is off', () => {
     expect(cues({ ...voiceConfig, voice: 'off' })).toHaveLength(0);
+  });
+});
+
+describe('BreathEngine meditation gongs', () => {
+  it('opens with a normal gong and closes with a softer one', () => {
+    const { sink, calls, setTime } = makeSink();
+    const engine = new BreathEngine(sink, { ...config, meditationSeconds: 5 });
+    engine.start();
+    runTo(engine, setTime, 40);
+    const gongs = calls.filter((c) => c.kind === 'gong');
+    expect(gongs).toHaveLength(2);
+    expect(gongs[0].closing).toBeFalsy();
+    expect(gongs[1].closing).toBe(true);
+    expect(gongs[1].at - gongs[0].at).toBeCloseTo(5, 1);
   });
 });
 
