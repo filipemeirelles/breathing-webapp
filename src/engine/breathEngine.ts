@@ -14,12 +14,21 @@ import {
  * Saída de áudio que o motor agenda no relógio do AudioContext. Injetável
  * para permitir testes com relógio falso.
  */
+/** Locuções disponíveis. Arquivos ausentes são ignorados pela saída de áudio. */
+export type VoiceCue = 'inhale' | 'exhale' | 'hold' | 'deep' | 'release' | 'prepare';
+
 export interface AudioSink {
   /** AudioContext.currentTime, em segundos. */
   now(): number;
-  scheduleBreath(type: 'inhale' | 'exhale', atTime: number, durationSec: number): void;
-  scheduleGong(atTime: number): void;
+  /** 'recovery' = inspiração funda que abre a recuperação. */
+  scheduleBreath(type: 'inhale' | 'exhale' | 'recovery', atTime: number, durationSec: number): void;
+  /** Locução ("Inspira", "Expira"...) tocando no instante `atTime`. */
+  scheduleVoice(cue: VoiceCue, atTime: number): void;
+  /** `closing` = gongo de encerramento, mais suave que o de abertura. */
+  scheduleGong(atTime: number, closing?: boolean): void;
   scheduleChime(atTime: number): void;
+  /** Bipe curto de contagem regressiva; `final` marca o último segundo. */
+  scheduleTick(atTime: number, final: boolean): void;
   setAmbience(mode: 'breathing' | 'hold' | 'meditation', atTime: number): void;
   /** Cancela apenas fontes ainda não iniciadas. */
   cancelScheduled(): void;
@@ -28,7 +37,15 @@ export interface AudioSink {
 }
 
 export type EngineEvent =
-  | { type: 'segment'; phase: Phase; round: number; breath: number; seconds: number }
+  | {
+      type: 'segment';
+      phase: Phase;
+      round: number;
+      breath: number;
+      seconds: number;
+      /** Duração do segmento em s; Infinity nas fases livres (count-up). */
+      duration: number;
+    }
   | { type: 'tick'; seconds: number }
   | {
       type: 'complete';
@@ -44,6 +61,10 @@ const SCHEDULER_INTERVAL_MS = 25;
 const START_DELAY_SEC = 0.1;
 /** Chime de aviso quando faltam 3 respirações para o fim do round. */
 const LAST_BREATHS_WARNING = 3;
+/** Quantos bipes antes do fim de uma fase cronometrada. */
+const COUNTDOWN_TICKS = 3;
+/** No modo 'intro', a voz fala só nas primeiras respirações de cada round. */
+const VOICE_INTRO_BREATHS = 5;
 
 /**
  * Relógio único da sessão: a timeline inteira vive em tempos absolutos do
@@ -205,6 +226,7 @@ export class BreathEngine {
       round: Math.max(0, seg.round),
       breath: seg.breath,
       seconds: this.displaySeconds(seg, seg.start),
+      duration: seg.end - seg.start,
     });
   }
 
@@ -295,10 +317,32 @@ export class BreathEngine {
     }
   }
 
+  /** Bipes nos últimos segundos de uma fase com fim conhecido. */
+  private scheduleCountdown(seg: Segment) {
+    if (!this.cfg.countdownCues || !Number.isFinite(seg.end)) return;
+    if (seg.end - seg.start < COUNTDOWN_TICKS + 1) return;
+    for (let i = COUNTDOWN_TICKS; i >= 1; i--) {
+      this.sink.scheduleTick(seg.end - i, i === 1);
+    }
+  }
+
+  /** A locução vale para esta fase? `breath` só importa nas respirações ativas. */
+  private voiceOn(breath?: number): boolean {
+    const mode = this.cfg.voice;
+    if (mode === 'off') return false;
+    if (mode === 'intro' && breath !== undefined) return breath <= VOICE_INTRO_BREATHS;
+    return true;
+  }
+
   private scheduleAudioFor(seg: Segment) {
     const dur = seg.end - seg.start;
     switch (seg.phase) {
+      case 'PREPARE':
+        if (this.voiceOn()) this.sink.scheduleVoice('prepare', seg.start);
+        this.scheduleCountdown(seg);
+        break;
       case 'BREATHING_INHALE':
+        if (this.voiceOn(seg.breath)) this.sink.scheduleVoice('inhale', seg.start);
         this.sink.scheduleBreath('inhale', seg.start, dur);
         if (seg.breath === 1) this.sink.setAmbience('breathing', seg.start);
         if (seg.breath === this.cfg.breathsPerRound - (LAST_BREATHS_WARNING - 1)) {
@@ -306,24 +350,31 @@ export class BreathEngine {
         }
         break;
       case 'BREATHING_EXHALE':
+        if (this.voiceOn(seg.breath)) this.sink.scheduleVoice('exhale', seg.start);
         this.sink.scheduleBreath('exhale', seg.start, dur);
         break;
       case 'APNEA':
+        if (this.voiceOn()) this.sink.scheduleVoice('hold', seg.start);
         this.sink.scheduleChime(seg.start);
         this.sink.setAmbience('hold', seg.start);
+        this.scheduleCountdown(seg);
         break;
       case 'RECOVERY_HOLD':
         // A respiração profunda de recuperação do WHM.
-        this.sink.scheduleBreath('inhale', seg.start, Math.min(2.5, dur));
+        if (this.voiceOn()) this.sink.scheduleVoice('deep', seg.start);
+        this.sink.scheduleBreath('recovery', seg.start, Math.min(2.5, dur));
+        this.sink.setAmbience('breathing', seg.start);
+        this.scheduleCountdown(seg);
         break;
       case 'RECOVERY_RELEASE':
         // Solta o ar retido antes do próximo round.
+        if (this.voiceOn()) this.sink.scheduleVoice('release', seg.start);
         this.sink.scheduleBreath('exhale', seg.start, dur);
         break;
       case 'MEDITATION':
         this.sink.scheduleGong(seg.start);
         this.sink.setAmbience('meditation', seg.start);
-        if (Number.isFinite(seg.end)) this.sink.scheduleGong(seg.end);
+        if (Number.isFinite(seg.end)) this.sink.scheduleGong(seg.end, true);
         break;
       default:
         break;

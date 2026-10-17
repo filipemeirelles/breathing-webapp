@@ -1,5 +1,7 @@
 export type RetentionMode = 'countdown' | 'countup';
-export type Soundscape = 'breeze' | 'ocean' | 'rain' | 'none';
+export type Soundscape = 'breeze' | 'ocean' | 'rain' | 'drone' | 'none';
+/** Voz guiada: em toda respiração, só nas primeiras de cada round, ou desligada. */
+export type VoiceMode = 'always' | 'intro' | 'off';
 
 /** Sentinela de meditationSeconds: medita até o usuário tocar em "Concluir". */
 export const UNLIMITED_MEDITATION = -1;
@@ -19,6 +21,14 @@ export interface ExerciseConfig {
   soundscape: Soundscape;
   /** Batidas binaurais (requer fones de ouvido). */
   binaural: boolean;
+  /** Volume do som de fundo (0–1). Não afeta a respiração guiada. */
+  ambienceVolume: number;
+  /** Vibração nas trocas de fase (onde o aparelho suportar). */
+  haptics: boolean;
+  /** Bipes suaves nos últimos 3s de apnéia, recuperação e preparo. */
+  countdownCues: boolean;
+  /** Locução "Inspira" / "Expira" e avisos de fase. */
+  voice: VoiceMode;
 }
 
 export const DEFAULT_CONFIG: ExerciseConfig = {
@@ -32,6 +42,10 @@ export const DEFAULT_CONFIG: ExerciseConfig = {
   prepSeconds: 5,
   soundscape: 'breeze',
   binaural: false,
+  ambienceVolume: 0.7,
+  haptics: true,
+  countdownCues: true,
+  voice: 'always',
 };
 
 export type Phase =
@@ -51,6 +65,8 @@ export interface ExerciseState {
   phase: Phase;
   /** Contagem exibida: regressiva ou progressiva conforme a fase/modo. */
   seconds: number;
+  /** Duração total do segmento atual em s (Infinity nas fases livres). */
+  segmentDuration: number;
   paused: boolean;
 }
 

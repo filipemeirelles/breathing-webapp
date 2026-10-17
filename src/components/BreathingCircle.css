@@ -1,145 +1,271 @@
 .breathing-circle-wrapper {
+  --stage: min(80vw, 330px, 48dvh);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 28px;
 }
 
-/* Altura fixa para o bloco de texto: trocar de fase não desloca o círculo */
-.breathing-info {
-  min-height: 132px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.breathing-circle {
-  width: 220px;
-  height: 220px;
+.orb-stage {
+  position: relative;
+  width: var(--stage);
+  height: var(--stage);
+  display: grid;
+  place-items: center;
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #c8e8fa, #a8d0f0 40%, #b4a7e8 100%);
-  box-shadow: 0 0 0 20px rgba(164, 200, 240, 0.15), 0 0 0 40px rgba(180, 167, 232, 0.08);
-  transition: transform 0.1s;
-  will-change: transform;
 }
 
-/* Inhale: animate scale from current size up to full.
-   Duration comes from --breath-duration (set inline from ExerciseConfig) so
-   CSS never drifts from the audio-clock timeline. */
-.breathing-circle[data-phase="BREATHING_INHALE"] {
-  animation: inhale var(--breath-duration, 2s) ease-in-out forwards;
+.orb-stage > * {
+  grid-area: 1 / 1;
 }
 
-/* Exhale: animate scale from full down to small */
-.breathing-circle[data-phase="BREATHING_EXHALE"] {
-  animation: exhale var(--breath-duration, 2s) ease-in-out forwards;
+/* Halo ambiente fixo: um gradiente (não box-shadow gigante, que o
+   compositor recortava num retângulo visível ao animar o orbe). */
+.orb-stage::before {
+  content: '';
+  grid-area: 1 / 1;
+  width: 130%;
+  height: 130%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--glow2) 16%, transparent), transparent);
+  pointer-events: none;
 }
 
-/* Prepare: contracted, gentle pulse while the countdown runs */
-.breathing-circle[data-phase="PREPARE"] {
-  transform: scale(0.45);
-  animation: apnea-pulse 4s ease-in-out infinite;
+/* ---------- Anel de progresso ---------- */
+
+.orb-ring {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  overflow: visible;
 }
 
-/* Meditation: slow, ample breathing-like pulse */
-.breathing-circle[data-phase="MEDITATION"] {
-  animation: meditation-pulse 8s ease-in-out infinite;
-  background: radial-gradient(circle at 40% 35%, #cde4fa, #aacdf0 40%, #beb0ec 100%);
+.orb-ring circle {
+  fill: none;
+  stroke-width: 1.4;
+  stroke-linecap: round;
 }
 
-.breathing-circle.paused {
+.orb-ring-track {
+  stroke: rgba(255, 255, 255, 0.07);
+}
+
+.orb-ring-progress {
+  stroke: var(--glow);
+  stroke-dasharray: 100;
+  /* Ticks chegam 1x/s: a transição linear de 1s deixa o anel contínuo */
+  transition: stroke-dashoffset 1s linear, stroke 2.4s ease;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--glow) 70%, transparent));
+}
+
+/* Fase livre: um cometa girando devagar, sem prazo */
+.orb-ring-free {
+  stroke: var(--glow);
+  stroke-dasharray: 18 82;
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  animation: ring-spin 6s linear infinite;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--glow) 70%, transparent));
+}
+
+.paused .orb-ring-free,
+.breathe-giant-circle.paused .orb-ring-free {
   animation-play-state: paused;
 }
 
-/* Apnea: stay contracted, subtle soft pulse */
+@keyframes ring-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- Orbe ---------- */
+
+.breathing-circle {
+  width: 82%;
+  height: 82%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.55), transparent 32%),
+    radial-gradient(circle at 50% 50%,
+      color-mix(in srgb, var(--glow) 78%, #1c2250) 0%,
+      color-mix(in srgb, var(--glow2) 70%, #141a3c) 72%,
+      color-mix(in srgb, var(--glow2) 45%, #0b1022) 100%);
+  box-shadow:
+    0 0 50px 4px color-mix(in srgb, var(--glow) 34%, transparent),
+    inset 0 -18px 40px rgba(5, 8, 30, 0.35);
+  transform: scale(0.5);
+}
+
+/* Inspira/expira: a duração vem de --breath-duration (da config), então o
+   CSS nunca deriva da timeline do relógio de áudio. O key por respiração
+   reinicia a animação no instante exato da troca de fase. */
+.breathing-circle[data-phase="BREATHING_INHALE"] {
+  animation: inhale var(--breath-duration, 2s) cubic-bezier(0.37, 0, 0.3, 1) forwards;
+}
+
+.breathing-circle[data-phase="BREATHING_EXHALE"] {
+  animation: exhale var(--breath-duration, 2s) cubic-bezier(0.37, 0, 0.3, 1) forwards;
+}
+
+.breathing-circle[data-phase="PREPARE"] {
+  transform: scale(0.5);
+  animation: idle-pulse 4s ease-in-out infinite;
+}
+
+/* Apnéia: pulmões vazios — orbe recolhido, pulsando bem devagar */
 .breathing-circle[data-phase="APNEA"] {
-  transform: scale(0.45);
-  animation: apnea-pulse 4s ease-in-out infinite;
-  background: radial-gradient(circle at 40% 35%, #c0d8f8, #a0c4e8 40%, #c8bdf0 100%);
+  transform: scale(0.46);
+  animation: idle-pulse 5s ease-in-out infinite;
 }
 
-/* Recovery: stay expanded, soft glow pulse */
+/* Recuperação: pulmões cheios — orbe expandido, brilho suave */
 .breathing-circle[data-phase="RECOVERY_HOLD"] {
-  transform: scale(1);
-  animation: recovery-pulse 3s ease-in-out infinite;
-  background: radial-gradient(circle at 40% 35%, #d8f0fc, #b8dcf8 40%, #c4b8f0 100%);
+  animation: recovery-in 1.8s cubic-bezier(0.22, 1, 0.36, 1) forwards, recovery-glow 3s ease-in-out 1.8s infinite;
 }
 
-/* Release: solta o ar retido na recuperação, mesmo movimento de uma expiração */
 .breathing-circle[data-phase="RECOVERY_RELEASE"] {
-  animation: exhale var(--breath-duration, 2s) ease-in-out forwards;
-  background: radial-gradient(circle at 40% 35%, #d8f0fc, #b8dcf8 40%, #c4b8f0 100%);
+  animation: exhale var(--breath-duration, 2s) cubic-bezier(0.37, 0, 0.3, 1) forwards;
+}
+
+.breathing-circle[data-phase="MEDITATION"] {
+  animation: meditation-pulse 10s ease-in-out infinite;
+}
+
+.breathing-circle.paused,
+.breathe-giant-circle.paused .breathing-circle {
+  animation-play-state: paused;
 }
 
 @keyframes inhale {
-  from { transform: scale(0.45); }
+  from { transform: scale(0.5); }
   to   { transform: scale(1); }
 }
 
 @keyframes exhale {
   from { transform: scale(1); }
-  to   { transform: scale(0.45); }
+  to   { transform: scale(0.5); }
 }
 
-@keyframes apnea-pulse {
-  0%, 100% { box-shadow: 0 0 0 20px rgba(164, 200, 240, 0.12), 0 0 0 40px rgba(180, 167, 232, 0.05); }
-  50%       { box-shadow: 0 0 0 24px rgba(164, 200, 240, 0.2), 0 0 0 48px rgba(180, 167, 232, 0.08); }
+@keyframes idle-pulse {
+  0%, 100% { transform: scale(0.46); filter: brightness(0.95); }
+  50%      { transform: scale(0.5); filter: brightness(1.08); }
+}
+
+@keyframes recovery-in {
+  from { transform: scale(0.5); }
+  to   { transform: scale(1); }
+}
+
+@keyframes recovery-glow {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50%      { transform: scale(0.98); filter: brightness(1.12); }
 }
 
 @keyframes meditation-pulse {
-  0%, 100% { transform: scale(0.6); }
-  50%      { transform: scale(0.85); }
+  0%, 100% { transform: scale(0.62); }
+  50%      { transform: scale(0.82); }
 }
 
-@keyframes recovery-pulse {
-  0%, 100% { box-shadow: 0 0 0 24px rgba(164, 200, 240, 0.2), 0 0 0 48px rgba(180, 167, 232, 0.1); }
-  50%       { box-shadow: 0 0 0 32px rgba(164, 200, 240, 0.28), 0 0 0 60px rgba(180, 167, 232, 0.14); }
-}
+/* ---------- Centro (número / tempo) ---------- */
 
-.breathing-label {
-  font-size: 1.4rem;
-  font-weight: 500;
-  color: var(--text);
-  letter-spacing: 0.01em;
-  min-height: 2rem;
-  text-align: center;
-}
-
-.breathing-sublabel {
-  font-size: 0.9rem;
-  color: var(--text-muted);
-  font-weight: 400;
-  margin-top: 4px;
-  text-align: center;
+.orb-center {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  text-shadow: 0 2px 18px rgba(5, 8, 30, 0.6);
 }
 
 .breath-counter {
-  margin-top: 14px;
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--accent-dark);
-  text-align: center;
-  letter-spacing: 0.02em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
 }
 
-.timer-display {
-  margin-top: 14px;
-  font-size: 2.8rem;
-  font-weight: 300;
-  color: var(--text);
-  text-align: center;
-  letter-spacing: -0.02em;
+.breath-counter-value {
+  font-size: clamp(3rem, 14vw, 4.4rem);
+  font-weight: 200;
+  letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
 }
 
-/* Telas baixas: círculo menor para tudo caber sem rolagem */
-@media (max-height: 700px) {
-  .breathing-circle {
-    width: 176px;
-    height: 176px;
-  }
+.breath-counter-total {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(238, 240, 255, 0.7);
+}
 
-  .breathing-circle-wrapper {
-    gap: 20px;
+.timer-display {
+  font-size: clamp(3rem, 15vw, 4.6rem);
+  font-weight: 200;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* ---------- Rótulos ---------- */
+
+.breathing-info {
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  padding: 0 16px;
+}
+
+.breathing-label {
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.breathing-sublabel {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+/* ---------- Apnéia livre: o orbe inteiro é o botão ---------- */
+
+.breathe-giant-circle {
+  cursor: pointer;
+  transition: transform 0.2s var(--ease-out);
+}
+
+.breathe-giant-circle .breathing-circle {
+  box-shadow:
+    0 0 60px 6px color-mix(in srgb, var(--glow) 38%, transparent),
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 -18px 40px rgba(5, 8, 30, 0.35);
+}
+
+/* Aqui o orbe fica maior que na apnéia cronometrada: é um alvo de toque */
+.breathe-giant-circle .breathing-circle[data-phase="APNEA"] {
+  animation: tap-pulse 5s ease-in-out infinite;
+}
+
+.breathe-giant-circle:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+@keyframes tap-pulse {
+  0%, 100% { transform: scale(0.74); filter: brightness(0.95); }
+  50%      { transform: scale(0.78); filter: brightness(1.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breathing-circle[data-phase="PREPARE"],
+  .breathing-circle[data-phase="APNEA"],
+  .breathing-circle[data-phase="MEDITATION"],
+  .orb-ring-free {
+    animation: none;
+  }
+  .breathing-circle[data-phase="MEDITATION"] {
+    transform: scale(0.7);
   }
 }
