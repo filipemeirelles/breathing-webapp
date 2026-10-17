@@ -17,7 +17,7 @@ Sem clipe adequado para a duração pedida (por exemplo expiração acima de ~3,
 usa a expiração sintetizada em `src/audio.ts`, que escala para qualquer ritmo.
 
 Locuções opcionais ainda não geradas (o app já as reconhece e ignora enquanto o arquivo
-não existir): `voice-hold.mp3` ("Segura"), `voice-deep.mp3` ("Inspira fundo"),
+não existir; ao adicionar um arquivo, inclua o cue em `SHIPPED_VOICE_CUES` em `src/audio.ts`): `voice-hold.mp3` ("Segura"), `voice-deep.mp3` ("Inspira fundo"),
 `voice-release.mp3` ("Solta") e `voice-prepare.mp3` ("Prepare-se").
 
 ## Como a voz foi gerada

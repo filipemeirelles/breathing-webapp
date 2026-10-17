@@ -31,6 +31,12 @@ const clipBuffers = new Map<string, AudioBuffer>();
 const INHALE_CLIPS = ['breath-inhale-2s', 'breath-inhale-3s', 'breath-inhale-4s'];
 const EXHALE_CLIPS = ['breath-exhale-2s', 'breath-exhale-3s'];
 const RECOVERY_CLIP = 'breath-recovery';
+/**
+ * Locuções que realmente existem em public/audio. Só essas são baixadas
+ * (pedir arquivo ausente gera 404 no console). Ao adicionar um arquivo,
+ * inclua o cue aqui e em docs/audio.md.
+ */
+const SHIPPED_VOICE_CUES: VoiceCue[] = ['inhale', 'exhale'];
 const VOICE_FILES: Record<VoiceCue, string> = {
   inhale: 'voice-inhale',
   exhale: 'voice-exhale',
@@ -255,7 +261,7 @@ export async function initAudio() {
   const c = getCtx();
   await c.resume();
   const base = import.meta.env.BASE_URL;
-  const names = [...INHALE_CLIPS, ...EXHALE_CLIPS, RECOVERY_CLIP, ...Object.values(VOICE_FILES)];
+  const names = [...INHALE_CLIPS, ...EXHALE_CLIPS, RECOVERY_CLIP, ...SHIPPED_VOICE_CUES.map((c) => VOICE_FILES[c])];
   const pending = names.filter((n) => !clipBuffers.has(n));
   // Cada arquivo é opcional: se faltar (ou a rede falhar) o motor cai nos
   // sons sintetizados e a sessão segue.
